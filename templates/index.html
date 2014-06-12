@@ -1,0 +1,195 @@
+<html>
+  <head>
+<link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.4.5/leaflet.css" />
+<!--[if lte IE 8]>
+    <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.4.5/leaflet.ie.css" />
+<![endif]-->
+
+<script src="http://cdn.leafletjs.com/leaflet-0.4.5/leaflet.js"></script>    
+<script type="text/javascript" src="http://maps.stamen.com/js/tile.stamen.js?v1.2.1"></script>
+<script type="text/javascript" src="/static/js/jquery.js"></script>
+    <script type="text/javascript" src="/static/js/underscore.js"></script>
+    <script type="text/javascript" src="/static/js/backbone-min.js"></script>
+    <script type="text/javascript" src="/static/js/wicket.js"></script>
+    <script type="text/javascript" src="/static/js/wicket-leaflet.js"></script>
+    <script type="text/javascript" src="/static/js/llmap.js"></script>
+    <script type="text/javascript" src="/static/js/leaflet-geodesy.js"></script>
+
+    <style>
+
+.info {
+  display: none;
+}
+
+#map {
+    position: absolute;
+    top: 0; /* if you have a 200px block at the top */
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.plotButtonBox {
+  width: 100%;
+  text-align: center;
+  overflow: hidden;
+}
+
+      .controlsBox {
+        padding: 10px;
+        -webkit-border-radius: 15px;
+        -moz-border-radius: 15px;
+        border-radius: 15px;
+
+background: #E9EAEE;
+border: 2px solid white;
+margin: 0 auto;
+box-shadow: 1px 2px 6px rgba(0, 0, 0, 0.5);
+-moz-box-shadow: 1px 2px 6px rgba(0,0,0, 0.5);
+-webkit-box-shadow: 1px 2px 6
+
+
+        z-index: 50;
+        background: white;
+        position: fixed;
+        width: 170px;
+        /* height: 440 px; */
+
+      }
+
+
+.clear { /* generic container (i.e. div) for floating buttons */
+    overflow: hidden;
+    width: 100%;
+}
+
+a.button {
+    background: transparent url('/static/img/bg_button_a.gif') no-repeat scroll top right;
+    color: #444;
+    display: block;
+    float: left;
+    font: normal 12px arial, sans-serif;
+    height: 24px;
+    margin-right: 6px;
+    padding-right: 18px;
+    text-decoration: none;
+}
+
+a.button span {
+    background: transparent url('/static/img/bg_button_span.gif') no-repeat;
+    display: block;
+    line-height: 14px;
+    padding: 5px 0 5px 18px;
+}
+
+a.button:active {
+    background-position: bottom right;
+    color: #000;
+    outline: none;
+}
+
+a.button:active span {
+    background-position: bottom left;
+    padding: 6px 0 4px 18px;
+}
+
+.boundsButton {
+  padding-left: 48px;
+}
+
+.basemapSelectorBox {
+  position: fixed;
+  left: 210px;
+  z-index: 10000;
+}
+
+    </style>
+  </head>
+  <body>
+    <div id="map" class="map"></div>
+
+    <div class="controlsBox">
+      <div class="controls">
+        <label>
+          <input type="radio" name="pointmode" value="latlng" class="latlngMode" checked="checked"/>
+          Lat/Lng
+        </label>
+
+        <br/>
+
+        <label>
+          <input type="radio" name="pointmode" value="lnglat" class="lnglatMode"/>
+          Lng/Lat
+        </label>
+
+        <hr/>
+
+        <label>
+          <input type="radio" name="mode" value="polygon" class="polygonMode" data-mode="polygon" checked="checked"/>
+          Polygon mode
+        </label>
+
+        <br/>
+
+        <label>
+          <input type="radio" name="mode" value="line" class="lineMode" data-mode="line"/>
+          Line mode
+        </label>
+
+	<br/>
+
+        <label>
+          <input type="radio" name="mode" value="point" class="pointMode" data-mode="point"/>
+          Point mode
+        </label>
+	<br/>
+    
+        <label>
+          <input type="radio" name="mode" value="circle" class="circleMode" data-mode="circle"/>
+          Circle mode
+        </label>
+
+        <hr/>
+
+        <label>
+          <input type="checkbox" name="clearMap" value="clearMap" class="clearMap" checked/>
+          Clear map on plot
+        </label>
+
+        <br/>
+
+        <label>
+          <input type="checkbox" name="s2cover" value="clearMap" class="s2cover"/>
+          Show s2 covering
+        </label>
+
+        <div class="s2options" style="display: none">
+          <input size="2" class="min_level" value="1"> min_level <br/>
+          <input size="2" class="max_level" value="30"> max_level <br/>
+          <input size="2" class="max_cells" value="200"> max_cells <br/>
+          <input size="2" class="level_mod" value="1"> level_mod <br/>
+        </div>
+
+        <div class="circleOptions" style="display: none">
+          <input size="5" class="radiusInput"> radius (meters)<br/>
+        </div>
+      <br/>
+
+      <textarea class="boundsInput" rows="18"></textarea><br/>
+
+      <div class="plotButtonBox">
+        <a class="button boundsButton"><span>Plot</span></a>
+      </div> 
+  
+      <div class="info"/>
+     </div>
+    </div>
+
+    <script>
+      $(function() {
+        var Page = new PageController();
+      	Page.initMapPage();
+      });
+    </script>
+  </body>
+</html>
