@@ -74,10 +74,22 @@ func cellIdsToJSON(w http.ResponseWriter, ids []s2.CellID) {
 func S2CoverHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	points := strings.Split(r.FormValue("points"), ",")
-	minLevel, _ := strconv.Atoi(r.FormValue("min_level"))
-	maxLevel, _ := strconv.Atoi(r.FormValue("max_level"))
-	maxCells, _ := strconv.Atoi(r.FormValue("max_cells"))
-	levelMod, _ := strconv.Atoi(r.FormValue("level_mod"))
+	minLevel, err := strconv.Atoi(r.FormValue("min_level"))
+	if err != nil {
+		minLevel = 1
+	}
+	maxLevel, err := strconv.Atoi(r.FormValue("max_level"))
+	if err != nil {
+		maxLevel = s2.MaxCellLevel
+	}
+	maxCells, err := strconv.Atoi(r.FormValue("max_cells"))
+	if err != nil {
+		maxCells = 200
+	}
+	levelMod, err := strconv.Atoi(r.FormValue("level_mod"))
+	if err != nil {
+		levelMod = 1
+	}
 	builder := s2.NewPolygonBuilder(s2.DIRECTED_XOR())
 	pvec := []s2.Point{}
 	for i := 0; i < len(points); i += 2 {
@@ -86,19 +98,26 @@ func S2CoverHandler(w http.ResponseWriter, r *http.Request) {
 		pvec = append(pvec, s2.PointFromLatLng(s2.LatLngFromDegrees(lat, lng)))
 	}
 
-	for i := 0; i < len(pvec); i++ {
-		builder.AddEdge(pvec[i], pvec[(i+1)%len(pvec)])
+	var covering []s2.CellID
+	if len(pvec) == 1 {
+		for i := minLevel; i <= maxLevel; i += levelMod {
+			covering = append(covering, s2.CellIDFromPoint(pvec[0]).Parent(i))
+		}
+	} else {
+		for i := 0; i < len(pvec); i++ {
+			builder.AddEdge(pvec[i], pvec[(i+1)%len(pvec)])
+		}
+
+		var poly s2.Polygon
+		builder.AssemblePolygon(&poly, nil)
+
+		coverer := s2.NewRegionCoverer()
+		coverer.SetMinLevel(minLevel)
+		coverer.SetMaxLevel(maxLevel)
+		coverer.SetLevelMod(levelMod)
+		coverer.SetMaxCells(maxCells)
+		covering = coverer.Covering(poly)
 	}
-
-	var poly s2.Polygon
-	builder.AssemblePolygon(&poly, nil)
-
-	coverer := s2.NewRegionCoverer()
-	coverer.SetMinLevel(minLevel)
-	coverer.SetMaxLevel(maxLevel)
-	coverer.SetLevelMod(levelMod)
-	coverer.SetMaxCells(maxCells)
-	covering := coverer.Covering(poly)
 	cellIdsToJSON(w, covering)
 }
 
