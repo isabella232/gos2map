@@ -5,7 +5,7 @@ var baseurl = function(part) {
 var method = 'POST';
 if (window.location.host == 'localhost') {
   baseurl = function(part) {
-    return 'http://localhost:9000' + part + '?callback=?';
+    return 'http://localhost:8080' + part + '?callback=?';
   }
   method = 'GET';
 }
@@ -224,7 +224,8 @@ getPoints: function(tokens) {
       }
       bounds = bounds.extend(p.getBounds());
     });
-    this.map.setView(bounds.getCenter());
+//    this.map.setView(bounds.getCenter(), this.map.getBoundsZoom(bounds), true);
+    this.map.setView(bounds.getCenter())
     this.map.fitBounds(bounds);
   },
 
@@ -272,12 +273,15 @@ processBounds: function(bounds) {
   }
   this.previousBounds = bounds;
 
+/*
   var zoom = this.map.getBoundsZoom(bounds) - 1;
 
   // TODO: add control offset logic?
   var centerPixel = this.map.project(bounds.getCenter(), zoom);
   var centerPoint = this.map.unproject(centerPixel, zoom)
   this.map.setView(centerPoint, zoom);
+*/
+    this.map.setView(bounds.getCenter(), this.map.getBoundsZoom(bounds)-1, true);
 },
 
 renderCovering: function(latlngs) {
@@ -405,7 +409,7 @@ boundsCallback: function() {
     }
 
     var ll = points[0];
-    this.map.setView(ll, 15);
+//    this.map.setView(ll, 15);
     var marker = new L.Marker(ll);
     this.renderMarkers([marker]);
     this.renderCovering([ll]);
@@ -431,7 +435,7 @@ boundsCallback: function() {
     var bounds = null;
     var radius = this.$radiusInput.val();
     _.each(points, function(point) {
-      var polygon = new LGeo.circle(point, radius,
+      var polygon = LGeo.circle(point, radius,
          {color: "#0000ff", weight: 1, fill: true, fillOpacity: 0.2});
       this.renderPolygon(polygon, polygon.getBounds(), true);
       if (bounds == null) {
@@ -556,11 +560,6 @@ initialize: function() {
     )
   });
   this.map.addLayer(this.baseMap[1]);
-  basemapSelector.change(_.bind(function(e) {
-    this.switchBaseMap(
-      this.baseMaps[parseInt(basemapSelector.find("option:selected")[0].value)]
-    );
-  }, this));
 
   this.map.on('click', _.bind(function(e) {
     if (e.originalEvent.metaKey ||
