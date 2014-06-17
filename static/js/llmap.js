@@ -313,7 +313,7 @@ renderCovering: function(latlngs) {
   }
 },
 
-renderPolygon: function(polygon, bounds, dontClear) {
+renderPolygon: function(polygon, bounds, dontClear, points) {
   if (!dontClear) {
     this.resetDisplay();
   }
@@ -324,6 +324,8 @@ renderPolygon: function(polygon, bounds, dontClear) {
 
   if (typeof(polygon.getLatLngs) != "undefined") {
     this.renderCovering(polygon.getLatLngs());
+  } else if (points) {
+      this.renderCovering(points);
   }
 },
 
@@ -370,7 +372,7 @@ boundsCallback: function() {
 
     if (geojsonFeature['type'] && geojsonFeature['geometry']) {
       console.log('trying to load')
-      polygon = L.geoJson(geojsonFeature);
+      polygon = L.geoJson(geojsonFeature)
       console.log(geojsonFeature['geometry']['coordinates'])
       console.log(_.flatten(geojsonFeature['geometry']['coordinates']))
       coords = _.flatten(geojsonFeature['geometry']['coordinates'])
@@ -381,7 +383,7 @@ boundsCallback: function() {
     }
 
     if (polygon) {
-      this.renderPolygon(polygon, polygon.getBounds())
+      this.renderPolygon(polygon, polygon.getBounds(), false, points)
       return;
     }
   } else {
