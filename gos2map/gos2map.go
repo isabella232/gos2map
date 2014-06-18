@@ -1,20 +1,14 @@
-package main
+package gos2map
 
 import (
 	"encoding/json"
-	"flag"
 	"html/template"
-	//	"log"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"code.google.com/p/gos2/s2"
+	"github.com/davidreynolds/gos2/s2"
 	"github.com/gorilla/mux"
-)
-
-var (
-	port = flag.Int("port", 8080, "bind to this port")
 )
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
@@ -121,12 +115,9 @@ func S2CoverHandler(w http.ResponseWriter, r *http.Request) {
 	cellIdsToJSON(w, covering)
 }
 
-func main() {
-	flag.Parse()
+func init() {
 	r := mux.NewRouter()
 	r.HandleFunc("/", IndexHandler)
 	r.HandleFunc("/api/s2cover", S2CoverHandler)
 	http.Handle("/", r)
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
-	http.ListenAndServe(":"+strconv.Itoa(*port), nil)
 }
