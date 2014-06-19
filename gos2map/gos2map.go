@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/davidreynolds/gos2/s2"
-	"github.com/gorilla/mux"
 )
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
@@ -116,8 +115,6 @@ func S2CoverHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func init() {
-	r := mux.NewRouter()
-	r.HandleFunc("/", IndexHandler)
-	r.HandleFunc("/api/s2cover", S2CoverHandler)
-	http.Handle("/", r)
+	http.HandleFunc("/", IndexHandler)
+	http.HandleFunc("/api/s2cover", S2CoverHandler)
 }
