@@ -1,62 +1,87 @@
+<!DOCTYPE html>
 <html>
   <head>
-<link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.css" />
-<!--[if lte IE 8]>
-    <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.ie.css" />
-<![endif]-->
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.css" />
+    <!--[if lte IE 8]>
+        <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.ie.css" />
+        <![endif]-->
 
-<script src="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.js"></script>    
-<script type="text/javascript" src="http://maps.stamen.com/js/tile.stamen.js?v1.2.1"></script>
-<script type="text/javascript" src="/static/js/jquery.js"></script>
+    <script src="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.js"></script>
+    <script src="/static/js/Leaflet.Geodesic.js"></script>
+    <script type="text/javascript" src="http://maps.stamen.com/js/tile.stamen.js?v1.3.0"></script>
+    <script type="text/javascript" src="/static/js/jquery.js"></script>
     <script type="text/javascript" src="/static/js/underscore.js"></script>
     <script type="text/javascript" src="/static/js/backbone-min.js"></script>
     <script type="text/javascript" src="/static/js/wicket.js"></script>
     <script type="text/javascript" src="/static/js/wicket-leaflet.js"></script>
-    <script type="text/javascript" src="/static/js/llmap.js"></script>
     <script type="text/javascript" src="/static/js/leaflet-geodesy.js"></script>
+    <link href="https://api.tiles.mapbox.com/mapbox.js/plugins/leaflet-draw/v0.2.2/leaflet.draw.css" rel="stylesheet" />
+    <script src="https://api.tiles.mapbox.com/mapbox.js/plugins/leaflet-draw/v0.2.2/leaflet.draw.js"></script>
+    <script type="text/javascript" src="/static/js/llmap.js"></script>
 
     <style>
 
-.info {
-  display: none;
+    .info {
+    display: none;
+}
+
+.leaflet-control-command-interior
+{
+    width: 20px;
+    height: 20px;
+    background-position: 50% 50%;
+    background-repeat: no-repeat;
+    display: block;
+    padding: 3px;
+    border-radius: 4px;
+    -webkit-border-radius: 4px;
+    -moz-border-radius: 4px;
+    box-shadow: 0 1px 7px rgba(0, 0, 0, 0.65);
+    cursor: pointer;
+    text-align: center;
+    background-color: #FFFFFF;
+}
+
+.leaflet-control-command-interior:hover {
+    background-color: #F4F4F4;
+}
+
+body {
+    margin:0;
+    padding:0;
 }
 
 #map {
     position: absolute;
-    top: 0; /* if you have a 200px block at the top */
-    left: 0;
-    right: 0;
+    top: 0;
     bottom: 0;
+    width: 100%;
 }
 
 .plotButtonBox {
-  width: 100%;
-  text-align: center;
-  overflow: hidden;
+    width: 100%;
+    text-align: center;
+    overflow: hidden;
 }
 
-      .controlsBox {
-        padding: 10px;
-        -webkit-border-radius: 15px;
-        -moz-border-radius: 15px;
-        border-radius: 15px;
+.controlsBox {
+    padding: 10px;
+    -webkit-border-radius: 15px;
+    -moz-border-radius: 15px;
+    border-radius: 15px;
 
-background: #E9EAEE;
-border: 2px solid white;
-margin: 0 auto;
-box-shadow: 1px 2px 6px rgba(0, 0, 0, 0.5);
--moz-box-shadow: 1px 2px 6px rgba(0,0,0, 0.5);
--webkit-box-shadow: 1px 2px 6
-
-
-        z-index: 50;
-        background: white;
-        position: fixed;
-        width: 170px;
-        /* height: 440 px; */
-
-      }
-
+    background: #E9EAEE;
+    border: 2px solid white;
+    margin: 0 auto;
+    box-shadow: 1px 2px 6px rgba(0, 0, 0, 0.5);
+    -moz-box-shadow: 1px 2px 6px rgba(0,0,0, 0.5);
+    -webkit-box-shadow: 1px 2px 6;
+    z-index: 50;
+    background: white;
+    position: fixed;
+    width: 170px;
+}
 
 .clear { /* generic container (i.e. div) for floating buttons */
     overflow: hidden;
@@ -94,13 +119,7 @@ a.button:active span {
 }
 
 .boundsButton {
-  padding-left: 48px;
-}
-
-.basemapSelectorBox {
-  position: fixed;
-  left: 210px;
-  z-index: 10000;
+    padding-left: 48px;
 }
 
     </style>
@@ -143,7 +162,7 @@ a.button:active span {
           Point mode
         </label>
 	<br/>
-    
+        
         <label>
           <input type="radio" name="mode" value="circle" class="circleMode" data-mode="circle"/>
           Circle mode
@@ -173,16 +192,16 @@ a.button:active span {
         <div class="circleOptions" style="display: none">
           <input size="5" class="radiusInput"> radius (meters)<br/>
         </div>
-      <br/>
+        <br/>
 
-      <textarea class="boundsInput" rows="18"></textarea><br/>
+        <textarea class="boundsInput" rows="18"></textarea><br/>
 
-      <div class="plotButtonBox">
-        <a class="button boundsButton"><span>Plot</span></a>
-      </div> 
-  
-      <div class="info"/>
-     </div>
+        <div class="plotButtonBox">
+          <a class="button boundsButton"><span>Plot</span></a>
+        </div> 
+        
+        <div class="info"/>
+      </div>
     </div>
 
     <script>

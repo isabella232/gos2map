@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/davidreynolds/gos2/s2"
+	"github.com/gorilla/mux"
+	"github.com/kpawlik/geojson"
 )
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +116,154 @@ func S2CoverHandler(w http.ResponseWriter, r *http.Request) {
 	cellIdsToJSON(w, covering)
 }
 
+func hasError(w http.ResponseWriter, err error) bool {
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return true
+	}
+	return false
+}
+
+type setGeoms struct {
+	A geojson.Feature `json:"a"`
+	B geojson.Feature `json:"b"`
+}
+
+func polygonFromFeature(feat geojson.Feature) (*s2.Polygon, error) {
+	geom, err := feat.GetGeometry()
+	if err != nil {
+		return nil, err
+	}
+	poly := geom.(*geojson.Polygon)
+	var v []float64
+	for _, coord := range poly.Coordinates[0] {
+		v = append(v, float64(coord[0]))
+		v = append(v, float64(coord[1]))
+	}
+	var points []s2.Point
+	for i := 0; i < len(v); i += 2 {
+		ll := s2.LatLngFromDegrees(v[i+1], v[i])
+		points = append(points, s2.PointFromLatLng(ll))
+	}
+	builder := s2.NewPolygonBuilder(s2.DIRECTED_XOR())
+	for i := 0; i < len(points); i++ {
+		builder.AddEdge(points[i], points[(i+1)%len(points)])
+	}
+	var out s2.Polygon
+	builder.AssemblePolygon(&out, nil)
+	return &out, nil
+}
+
+func buildTwoPolygons(geoms setGeoms) (*s2.Polygon, *s2.Polygon, error) {
+	a, err := polygonFromFeature(geoms.A)
+	if err != nil {
+		return nil, nil, err
+	}
+	b, err := polygonFromFeature(geoms.B)
+	if err != nil {
+		return nil, nil, err
+	}
+	return a, b, nil
+}
+
+func polygonToGeoJson(poly *s2.Polygon) *geojson.Polygon {
+	var coordinates []geojson.Coordinates
+	for i := 0; i < poly.NumLoops(); i++ {
+		loop := poly.Loop(i)
+		var coords geojson.Coordinates
+		// +1 to close loop.
+		for j := 0; j < loop.NumVertices()+1; j++ {
+			ll := s2.LatLngFromPoint(*loop.Vertex(j))
+			lat := geojson.CoordType(ll.Lat.Degrees())
+			lng := geojson.CoordType(ll.Lng.Degrees())
+			coords = append(coords, geojson.Coordinate{lng, lat})
+		}
+		coordinates = append(coordinates, coords)
+	}
+	return geojson.NewPolygon(geojson.MultiLine(coordinates))
+}
+
+func union(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	decoder := json.NewDecoder(r.Body)
+	var geoms setGeoms
+	err := decoder.Decode(&geoms)
+	if hasError(w, err) {
+		return
+	}
+
+	a, b, err := buildTwoPolygons(geoms)
+	if hasError(w, err) {
+		return
+	}
+	var c s2.Polygon
+	c.InitToUnion(a, b)
+	poly := polygonToGeoJson(&c)
+	feat := geojson.NewFeature(poly, nil, nil)
+	js, err := geojson.Marshal(feat)
+	if hasError(w, err) {
+		return
+	}
+
+	w.Write([]byte(js))
+}
+
+func intersection(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	decoder := json.NewDecoder(r.Body)
+	var geoms setGeoms
+	err := decoder.Decode(&geoms)
+	if hasError(w, err) {
+		return
+	}
+
+	a, b, err := buildTwoPolygons(geoms)
+	if hasError(w, err) {
+		return
+	}
+	var c s2.Polygon
+	c.InitToIntersection(a, b)
+	poly := polygonToGeoJson(&c)
+	feat := geojson.NewFeature(poly, nil, nil)
+	js, err := geojson.Marshal(feat)
+	if hasError(w, err) {
+		return
+	}
+
+	w.Write([]byte(js))
+}
+
+func difference(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	decoder := json.NewDecoder(r.Body)
+	var geoms setGeoms
+	err := decoder.Decode(&geoms)
+	if hasError(w, err) {
+		return
+	}
+
+	a, b, err := buildTwoPolygons(geoms)
+	if hasError(w, err) {
+		return
+	}
+	var c s2.Polygon
+	c.InitToDifference(a, b)
+	poly := polygonToGeoJson(&c)
+	feat := geojson.NewFeature(poly, nil, nil)
+	js, err := geojson.Marshal(feat)
+	if hasError(w, err) {
+		return
+	}
+
+	w.Write([]byte(js))
+}
+
 func init() {
-	http.HandleFunc("/", IndexHandler)
-	http.HandleFunc("/api/s2cover", S2CoverHandler)
+	r := mux.NewRouter()
+	r.HandleFunc("/", IndexHandler)
+	r.HandleFunc("/api/s2cover", S2CoverHandler)
+	r.HandleFunc("/a/union", union)
+	r.HandleFunc("/a/intersection", intersection)
+	r.HandleFunc("/a/difference", difference)
+	http.Handle("/", r)
 }
