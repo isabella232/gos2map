@@ -42,7 +42,6 @@ var PageController = Backbone.Model.extend({
     EARTH_RADIUS_M: 6371 * 1000,
 
     geometries: [],
-    comboLayer: null,
 
     /**
      * @param {number} degrees
@@ -215,8 +214,6 @@ var PageController = Backbone.Model.extend({
             return new L.LatLng(ll.lat, ll.lng);
         });
 
-        console.log(points);
-
         var geodesic = L.geodesic([points], {steps:50});
         var geodesicPoints = geodesic.getLatLngs();
 
@@ -359,6 +356,8 @@ var PageController = Backbone.Model.extend({
     },
 
     boundsCallback: function() {
+        this.setHash();
+        this.resetDisplay();
         var bboxstr = this.$boundsInput.val() || this.placeholder;
 
         try {
@@ -388,7 +387,6 @@ var PageController = Backbone.Model.extend({
            console.log(polygon);
            //this.renderPolygon(polygon, polygon.getBounds())
            } else */ if (geojsonFeature) {
-               console.log(geojsonFeature);
                if (geojsonFeature['type'] && geojsonFeature['coordinates']) {
                    geojsonFeature = {
                        'type': 'Feature',
@@ -399,22 +397,38 @@ var PageController = Backbone.Model.extend({
                console.log(geojsonFeature)
 
                if (geojsonFeature['type'] && geojsonFeature['geometry']) {
+                   var newFeature = {
+                       'type': 'Feature',
+                       'properties': {},
+                       'geometry': {'type': 'Polygon', 'coordinates': []},
+                   }
                    console.log('trying to load')
                    polygon = L.geoJson(geojsonFeature)
                    console.log(geojsonFeature['geometry']['coordinates'])
                    console.log(_.flatten(geojsonFeature['geometry']['coordinates']))
-                   coords = _.flatten(geojsonFeature['geometry']['coordinates'])
-                   for (var i = 0; i < coords.length; i+=2) {
-                       points.push(new L.LatLng(coords[i+1], coords[i]));
+                   coords = geojsonFeature['geometry']['coordinates'];
+                   flatcoords = _.flatten(coords);
+                   for (var i = 0; i < flatcoords.length; i+=2) {
+                       points.push(new L.LatLng(flatcoords[i+1], flatcoords[i]));
                    }
-                   var geodesic = L.geodesic(points, {steps:50});
-                   var geodesicPoints = geodesic.getLatLngs();
-                   polygon = L.Polygon(geodesicPoints, {color:"#ff0000", weight: 1, fill: true, fillOpacity: 0.2});
+                   for (var i = 0; i < coords.length; i++) {
+                       var pts = [];
+                       var geomCoords = [];
+                       for (var j = 0; j < coords[i].length; j++) {
+                           var ll = new L.LatLng(coords[i][j][1], coords[i][j][0]);
+                           pts.push(ll);
+                       }
+                       var geodesic = L.geodesic([pts], {steps:50, fill: true});
+                       var geodesicPoints = geodesic.getLatLngs();
+                       var newCoords = [];
+                       for (var j = 0; j < geodesicPoints[0].length; j++) {
+                           geomCoords.push([geodesicPoints[0][j].lng, geodesicPoints[0][j].lat]);
+                       }
+                       newFeature['geometry']['coordinates'].push(geomCoords);
+                   }
+                   polygon = L.geoJson(newFeature);
+                   this.renderPolygon(polygon, polygon.getBounds(), false, points);
                    this.setReverseOrder();
-               }
-
-               if (polygon) {
-                   this.renderPolygon(polygon, polygon.getBounds(), false, geodesicPoints);
                    return;
                }
            } else {
@@ -582,15 +596,7 @@ var PageController = Backbone.Model.extend({
     },
 
     operationCallback: function(data) {
-        /*
         this.geometries = [data];
-        this.drawnItems.clearLayers();
-        if (this.comboLayer !== null) {
-            this.map.removeLayer(this.comboLayer);
-        }
-        this.comboLayer = L.geoJson().addTo(this.map);
-        this.comboLayer.addData(data);
-        */
         this.drawnItems.clearLayers();
         this.hideSetOperators();
         this.$boundsInput.val(JSON.stringify(data));
