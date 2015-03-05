@@ -2,6 +2,7 @@ package gos2map
 
 import (
 	"encoding/json"
+	"errors"
 	"html/template"
 	"net/http"
 	"strconv"
@@ -68,7 +69,11 @@ func cellIdsToJSON(w http.ResponseWriter, ids []s2.CellID) {
 
 func S2CoverHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	points := strings.Split(r.FormValue("points"), ",")
+	var points []string
+	pointstr := r.FormValue("points")
+	if len(pointstr) > 0 {
+		points = strings.Split(r.FormValue("points"), ",")
+	}
 	minLevel, err := strconv.Atoi(r.FormValue("min_level"))
 	if err != nil {
 		minLevel = 1
@@ -79,7 +84,7 @@ func S2CoverHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	maxCells, err := strconv.Atoi(r.FormValue("max_cells"))
 	if err != nil {
-		maxCells = 200
+		maxCells = 8
 	}
 	levelMod, err := strconv.Atoi(r.FormValue("level_mod"))
 	if err != nil {
@@ -94,7 +99,47 @@ func S2CoverHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var covering []s2.CellID
-	if len(pvec) == 1 {
+	coverer := s2.NewRegionCoverer()
+	coverer.SetMinLevel(minLevel)
+	coverer.SetMaxLevel(maxLevel)
+	coverer.SetLevelMod(levelMod)
+	coverer.SetMaxCells(maxCells)
+
+	if len(pvec) == 0 {
+		// Try geojson.
+		var feature geojson.Feature
+		err := json.Unmarshal([]byte(r.FormValue("geojson")), &feature)
+		if hasError(w, err) {
+			return
+		}
+
+		geom, err := feature.GetGeometry()
+		if hasError(w, err) {
+			return
+		}
+		switch gg := geom.(type) {
+		case *geojson.Polygon:
+			for i := 0; i < len(gg.Coordinates); i++ {
+				coords := gg.Coordinates[i]
+				pb := s2.NewPolygonBuilder(s2.DIRECTED_XOR())
+				vec := make([]s2.Point, 0, len(coords)/2)
+				for j := 0; j < len(coords); j += 2 {
+					lat := float64(coords[j][1])
+					lng := float64(coords[j][0])
+					vec = append(vec, s2.PointFromLatLng(s2.LatLngFromDegrees(lat, lng)))
+				}
+				for j := 0; j < len(vec); j++ {
+					pb.AddEdge(vec[j], vec[(j+1)%len(vec)])
+				}
+				var poly s2.Polygon
+				pb.AssemblePolygon(&poly, nil)
+				builder.AddPolygon(&poly)
+			}
+			var poly s2.Polygon
+			builder.AssemblePolygon(&poly, nil)
+			covering = coverer.Covering(poly)
+		}
+	} else if len(pvec) == 1 {
 		for i := minLevel; i <= maxLevel; i += levelMod {
 			covering = append(covering, s2.CellIDFromPoint(pvec[0]).Parent(i))
 		}
@@ -102,15 +147,8 @@ func S2CoverHandler(w http.ResponseWriter, r *http.Request) {
 		for i := 0; i < len(pvec); i++ {
 			builder.AddEdge(pvec[i], pvec[(i+1)%len(pvec)])
 		}
-
 		var poly s2.Polygon
 		builder.AssemblePolygon(&poly, nil)
-
-		coverer := s2.NewRegionCoverer()
-		coverer.SetMinLevel(minLevel)
-		coverer.SetMaxLevel(maxLevel)
-		coverer.SetLevelMod(levelMod)
-		coverer.SetMaxCells(maxCells)
 		covering = coverer.Covering(poly)
 	}
 	cellIdsToJSON(w, covering)
@@ -125,8 +163,44 @@ func hasError(w http.ResponseWriter, err error) bool {
 }
 
 type setGeoms struct {
-	A geojson.Feature `json:"a"`
-	B geojson.Feature `json:"b"`
+	Geoms []geojson.Feature `json:"geoms"`
+}
+
+type SetOperationFn func(a, b, c *s2.Polygon) error
+
+func unionOperation(a, b, c *s2.Polygon) error {
+	c.InitToUnion(a, b)
+	return nil
+}
+
+func intersectionOperation(a, b, c *s2.Polygon) error {
+	c.InitToIntersection(a, b)
+	return nil
+}
+
+func differenceOperation(a, b, c *s2.Polygon) error {
+	c.InitToDifference(a, b)
+	return nil
+}
+
+func (s *setGeoms) BuildPolygon(fn SetOperationFn) (*s2.Polygon, error) {
+	if len(s.Geoms) < 2 {
+		return nil, errors.New("Need at least two polygons")
+	}
+	a, err := polygonFromFeature(s.Geoms[0])
+	if err != nil {
+		return nil, err
+	}
+	for i := 1; i < len(s.Geoms); i++ {
+		var c s2.Polygon
+		b, err := polygonFromFeature(s.Geoms[i])
+		if err != nil {
+			return nil, err
+		}
+		fn(a, b, &c)
+		a = &c
+	}
+	return a, nil
 }
 
 func polygonFromFeature(feat geojson.Feature) (*s2.Polygon, error) {
@@ -154,18 +228,6 @@ func polygonFromFeature(feat geojson.Feature) (*s2.Polygon, error) {
 	return &out, nil
 }
 
-func buildTwoPolygons(geoms setGeoms) (*s2.Polygon, *s2.Polygon, error) {
-	a, err := polygonFromFeature(geoms.A)
-	if err != nil {
-		return nil, nil, err
-	}
-	b, err := polygonFromFeature(geoms.B)
-	if err != nil {
-		return nil, nil, err
-	}
-	return a, b, nil
-}
-
 func polygonToGeoJson(poly *s2.Polygon) *geojson.Polygon {
 	var coordinates []geojson.Coordinates
 	for i := 0; i < poly.NumLoops(); i++ {
@@ -187,24 +249,22 @@ func union(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	decoder := json.NewDecoder(r.Body)
 	var geoms setGeoms
+
 	err := decoder.Decode(&geoms)
 	if hasError(w, err) {
 		return
 	}
 
-	a, b, err := buildTwoPolygons(geoms)
+	a, err := geoms.BuildPolygon(unionOperation)
 	if hasError(w, err) {
 		return
 	}
-	var c s2.Polygon
-	c.InitToUnion(a, b)
-	poly := polygonToGeoJson(&c)
+	poly := polygonToGeoJson(a)
 	feat := geojson.NewFeature(poly, nil, nil)
 	js, err := geojson.Marshal(feat)
 	if hasError(w, err) {
 		return
 	}
-
 	w.Write([]byte(js))
 }
 
@@ -216,14 +276,11 @@ func intersection(w http.ResponseWriter, r *http.Request) {
 	if hasError(w, err) {
 		return
 	}
-
-	a, b, err := buildTwoPolygons(geoms)
+	a, err := geoms.BuildPolygon(intersectionOperation)
 	if hasError(w, err) {
 		return
 	}
-	var c s2.Polygon
-	c.InitToIntersection(a, b)
-	poly := polygonToGeoJson(&c)
+	poly := polygonToGeoJson(a)
 	feat := geojson.NewFeature(poly, nil, nil)
 	js, err := geojson.Marshal(feat)
 	if hasError(w, err) {
@@ -241,14 +298,11 @@ func difference(w http.ResponseWriter, r *http.Request) {
 	if hasError(w, err) {
 		return
 	}
-
-	a, b, err := buildTwoPolygons(geoms)
+	a, err := geoms.BuildPolygon(differenceOperation)
 	if hasError(w, err) {
 		return
 	}
-	var c s2.Polygon
-	c.InitToDifference(a, b)
-	poly := polygonToGeoJson(&c)
+	poly := polygonToGeoJson(a)
 	feat := geojson.NewFeature(poly, nil, nil)
 	js, err := geojson.Marshal(feat)
 	if hasError(w, err) {

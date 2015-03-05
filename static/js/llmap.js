@@ -311,10 +311,18 @@ var PageController = Backbone.Model.extend({
     },
 
     renderCovering: function(latlngs) {
+        console.log(latlngs);
         if (this.showS2Covering()) {
-            var data = {
-                'points': _(latlngs).map(function(ll) { return ll.lat + "," + ll.lng; }).join(',')
-            };
+            var data = {};
+            if (latlngs['type'] && latlngs['geometry']) {
+                data = {"geojson": JSON.stringify(latlngs)};
+            } else {
+                data = {
+                    'points': _(latlngs).map(function(ll) {
+                        return ll.lat + "," + ll.lng;
+                    }).join(',')
+                };
+            }
 
             if (this.$minLevel.val()) {
                 data['min_level'] = this.$minLevel.val();
@@ -427,7 +435,8 @@ var PageController = Backbone.Model.extend({
                        newFeature['geometry']['coordinates'].push(geomCoords);
                    }
                    polygon = L.geoJson(newFeature);
-                   this.renderPolygon(polygon, polygon.getBounds(), false, points);
+                   this.renderPolygon(polygon, polygon.getBounds());//, false, points);
+                   this.renderCovering(newFeature);
                    this.setReverseOrder();
                    return;
                }
@@ -582,13 +591,17 @@ var PageController = Backbone.Model.extend({
     },
 
     showSetOperators: function() {
-        this.map.addControl(this.union);
-        this.map.addControl(this.intersection);
-        this.map.addControl(this.difference);
+        if (this.setOpsVisible === undefined || !this.setOpsVisible) {
+            this.setOpsVisible = true;
+            this.map.addControl(this.union);
+            this.map.addControl(this.intersection);
+            this.map.addControl(this.difference);
+        }
     },
 
     hideSetOperators: function() {
         try {
+            this.setOpsVisible = false;
             this.map.removeControl(this.union);
             this.map.removeControl(this.intersection);
             this.map.removeControl(this.difference);
@@ -611,10 +624,8 @@ var PageController = Backbone.Model.extend({
             text: '&#x22C3;',
             title: 'Set Union',
             click: _.bind(function() {
-                $.post("/a/union", JSON.stringify({
-                    a: this.geometries[0],
-                    b: this.geometries[1]
-                }), _.bind(this.operationCallback, this));
+                $.post("/a/union", JSON.stringify({"geoms":this.geometries}),
+                       _.bind(this.operationCallback, this));
             }, this)
         });
 
@@ -622,21 +633,17 @@ var PageController = Backbone.Model.extend({
             text: '&#x22C2;',
             title: 'Set Intersection',
             click: _.bind(function() {
-                $.post("/a/intersection", JSON.stringify({
-                    a: this.geometries[0],
-                    b: this.geometries[1]
-                }), _.bind(this.operationCallback, this));
+                $.post("/a/intersection", JSON.stringify({"geoms":this.geometries}),
+                       _.bind(this.operationCallback, this));
             }, this)
         });
 
         this.difference = L.control.command({
-            text: '&#x2216;',
+            text: '&#x2212;',
             title: 'Set Difference',
             click: _.bind(function() {
-                $.post("/a/difference", JSON.stringify({
-                    a: this.geometries[0],
-                    b: this.geometries[1]
-                }), _.bind(this.operationCallback, this));
+                $.post("/a/difference", JSON.stringify({"geoms":this.geometries}),
+                       _.bind(this.operationCallback, this));
             }, this)
         });
 
@@ -657,7 +664,12 @@ var PageController = Backbone.Model.extend({
             position: 'topright',
             draw: {
                 marker: null,
-                circle: null,
+                circle: {
+                    shapeOptions: {
+                        weight: 1,
+                        color: '#C30000',
+                    }
+                },
                 polyline: null,
                 rectangle: {
                     shapeOptions: {
@@ -761,8 +773,16 @@ var PageController = Backbone.Model.extend({
             layer = e.layer;
 
         if (type === 'polygon' || type === 'rectangle' || type === 'circle') {
+            if (type == 'circle') {
+                layer = LGeo.circle(layer.getLatLng(), layer.getRadius(), {
+                    color: '#0000ff',
+                    weight: 1,
+                    fill: true,
+                    fillOpacity: 0.2,
+                });
+            }
             this.geometries.push(layer.toGeoJSON());
-            if (this.geometries.length == 2) {
+            if (this.geometries.length >= 2) {
                 this.showSetOperators();
             } else {
                 this.hideSetOperators();
