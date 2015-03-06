@@ -214,7 +214,7 @@ var PageController = Backbone.Model.extend({
             return new L.LatLng(ll.lat, ll.lng);
         });
 
-        var geodesic = L.geodesic([points], {steps:50});
+        var geodesic = L.geodesic([points], {steps:10});
         var geodesicPoints = geodesic.getLatLngs();
 
         var polygon = new L.Polygon(geodesicPoints,
@@ -426,7 +426,7 @@ var PageController = Backbone.Model.extend({
                            var ll = new L.LatLng(coords[i][j][1], coords[i][j][0]);
                            pts.push(ll);
                        }
-                       var geodesic = L.geodesic([pts], {steps:50, fill: true});
+                       var geodesic = L.geodesic([pts], {steps:10});
                        var geodesicPoints = geodesic.getLatLngs();
                        var newCoords = [];
                        for (var j = 0; j < geodesicPoints[0].length; j++) {
@@ -434,7 +434,11 @@ var PageController = Backbone.Model.extend({
                        }
                        newFeature['geometry']['coordinates'].push(geomCoords);
                    }
-                   polygon = L.geoJson(newFeature);
+                   polygon = L.geoJson(newFeature, {
+                       style: function(f) {
+                           return {weight: 1};
+                       }
+                   });
                    this.renderPolygon(polygon, polygon.getBounds());//, false, points);
                    this.renderCovering(newFeature);
                    this.setReverseOrder();
@@ -485,7 +489,7 @@ var PageController = Backbone.Model.extend({
             } else {
                 polygonPoints = points;
             }
-            var geodesic = L.geodesic([polygonPoints], {steps:50});
+            var geodesic = L.geodesic([polygonPoints], {steps:10});
             var geodesicPoints = geodesic.getLatLngs();
             var polygon = new L.Polygon(geodesicPoints,
                                         {color: "#0000ff", weight: 1, fill: true, fillOpacity: 0.2});

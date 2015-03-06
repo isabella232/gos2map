@@ -59,16 +59,15 @@ func cellIdsToJSON(w http.ResponseWriter, ids []s2.CellID) {
 		idJson.Level = cell.Id().Level()
 		covering = append(covering, idJson)
 	}
-	js, err := json.Marshal(&covering)
-	if err != nil {
+	enc := json.NewEncoder(w)
+	if err := enc.Encode(covering); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
 	}
-	w.Write(js)
 }
 
 func S2CoverHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Encoding", "gzip")
 	var points []string
 	pointstr := r.FormValue("points")
 	if len(pointstr) > 0 {
@@ -137,7 +136,7 @@ func S2CoverHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			var poly s2.Polygon
 			builder.AssemblePolygon(&poly, nil)
-			covering = coverer.Covering(poly)
+			covering = coverer.Covering(&poly)
 		}
 	} else if len(pvec) == 1 {
 		for i := minLevel; i <= maxLevel; i += levelMod {
@@ -149,7 +148,7 @@ func S2CoverHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		var poly s2.Polygon
 		builder.AssemblePolygon(&poly, nil)
-		covering = coverer.Covering(poly)
+		covering = coverer.Covering(&poly)
 	}
 	cellIdsToJSON(w, covering)
 }
@@ -261,11 +260,10 @@ func union(w http.ResponseWriter, r *http.Request) {
 	}
 	poly := polygonToGeoJson(a)
 	feat := geojson.NewFeature(poly, nil, nil)
-	js, err := geojson.Marshal(feat)
-	if hasError(w, err) {
-		return
+	enc := json.NewEncoder(w)
+	if err := enc.Encode(feat); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	w.Write([]byte(js))
 }
 
 func intersection(w http.ResponseWriter, r *http.Request) {
@@ -282,12 +280,10 @@ func intersection(w http.ResponseWriter, r *http.Request) {
 	}
 	poly := polygonToGeoJson(a)
 	feat := geojson.NewFeature(poly, nil, nil)
-	js, err := geojson.Marshal(feat)
-	if hasError(w, err) {
-		return
+	enc := json.NewEncoder(w)
+	if err := enc.Encode(feat); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-
-	w.Write([]byte(js))
 }
 
 func difference(w http.ResponseWriter, r *http.Request) {
@@ -304,12 +300,10 @@ func difference(w http.ResponseWriter, r *http.Request) {
 	}
 	poly := polygonToGeoJson(a)
 	feat := geojson.NewFeature(poly, nil, nil)
-	js, err := geojson.Marshal(feat)
-	if hasError(w, err) {
-		return
+	enc := json.NewEncoder(w)
+	if err := enc.Encode(feat); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-
-	w.Write([]byte(js))
 }
 
 func init() {
