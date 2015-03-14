@@ -1,5 +1,5 @@
-var color0 = '#F52887';
-var color1 = '#571B7E';
+var color0 = '#FFFF00';
+var color1 = '#00FF00';
 
 L.Control.Command = L.Control.extend({
     options: {
@@ -32,6 +32,7 @@ var PageController = Backbone.Model.extend({
     },
 
     resetDisplay: function() {
+        this.previousBounds = null;
         this.layerGroup.clearLayers();
         this.drawnItems.clearLayers();
         this.$infoArea.empty();
@@ -112,12 +113,10 @@ var PageController = Backbone.Model.extend({
     },
 
     processBounds: function(bounds) {
-        if (!this.previousBounds) {
-            this.previousBounds = bounds;
+        if (bounds !== null) {
+            this.map.setView(bounds.getCenter(),
+                             this.map.getBoundsZoom(bounds), false);
         }
-        this.previousBounds = this.previousBounds.extend(bounds);
-        this.map.setView(this.previousBounds.getCenter(),
-                         this.map.getBoundsZoom(this.previousBounds), false);
     },
 
     renderCovering: function(latlngs) {
@@ -209,11 +208,15 @@ var PageController = Backbone.Model.extend({
     },
 
     addDrawnLayer: function(l) {
+        if (this.previousBounds === null || this.previousBounds === undefined) {
+            this.previousBounds = l.getBounds();
+        }
+        this.previousBounds = this.previousBounds.extend(l.getBounds());
         this.drawnItems.addLayer(l);
+        this.processBounds(this.previousBounds);
         if (this.showS2Covering()) {
             this.renderFeatureCovering(l.toGeoJSON());
         }
-        this.processBounds(l.getBounds());
     },
 
     updateS2CoverMode: function() {
@@ -357,7 +360,7 @@ var PageController = Backbone.Model.extend({
         this.map.on('draw:edited', _.bind(this.drawEditedCallback, this));
 
         this.attribution = new L.Control.Attribution();
-        this.attribution.addAttribution("<a href=\"http://code.google.com/p/s2-geometry-library/\">S2</a>");
+        this.attribution.addAttribution('<a target="_blank" href="https://github.com/davidreynolds/gos2">Powered by S2</a>');
         this.map.addControl(this.attribution);
 
         // For coverings.

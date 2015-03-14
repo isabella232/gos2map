@@ -4,11 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/davidreynolds/gos2/s2"
 	"github.com/gorilla/mux"
@@ -106,47 +104,33 @@ func S2CoverHandler(w http.ResponseWriter, r *http.Request) {
 	coverer.SetLevelMod(levelMod)
 	coverer.SetMaxCells(maxCells)
 
-	if len(pvec) == 0 {
-		// Try geojson.
-		var feature geojson.Feature
-		err := json.Unmarshal([]byte(r.FormValue("geojson")), &feature)
-		if hasError(w, err) {
-			return
-		}
+	var feature geojson.Feature
+	err = json.Unmarshal([]byte(r.FormValue("geojson")), &feature)
+	if hasError(w, err) {
+		return
+	}
 
-		geom, err := feature.GetGeometry()
-		if hasError(w, err) {
-			return
-		}
-		switch gg := geom.(type) {
-		case *geojson.Polygon:
-			for i := 0; i < len(gg.Coordinates); i++ {
-				coords := gg.Coordinates[i]
-				pb := s2.NewPolygonBuilder(s2.DIRECTED_XOR())
-				vec := make([]s2.Point, 0, len(coords)/2)
-				for j := 0; j < len(coords); j += 2 {
-					lat := float64(coords[j][1])
-					lng := float64(coords[j][0])
-					vec = append(vec, s2.PointFromLatLng(s2.LatLngFromDegrees(lat, lng)))
-				}
-				for j := 0; j < len(vec); j++ {
-					pb.AddEdge(vec[j], vec[(j+1)%len(vec)])
-				}
-				var poly s2.Polygon
-				pb.AssemblePolygon(&poly, nil)
-				builder.AddPolygon(&poly)
+	geom, err := feature.GetGeometry()
+	if hasError(w, err) {
+		return
+	}
+	switch gg := geom.(type) {
+	case *geojson.Polygon:
+		for i := 0; i < len(gg.Coordinates); i++ {
+			coords := gg.Coordinates[i]
+			pb := s2.NewPolygonBuilder(s2.DIRECTED_XOR())
+			vec := make([]s2.Point, 0, len(coords)/2)
+			for j := 0; j < len(coords); j += 2 {
+				lat := float64(coords[j][1])
+				lng := float64(coords[j][0])
+				vec = append(vec, s2.PointFromLatLng(s2.LatLngFromDegrees(lat, lng)))
+			}
+			for j := 0; j < len(vec); j++ {
+				pb.AddEdge(vec[j], vec[(j+1)%len(vec)])
 			}
 			var poly s2.Polygon
-			builder.AssemblePolygon(&poly, nil)
-			covering = coverer.Covering(&poly)
-		}
-	} else if len(pvec) == 1 {
-		for i := minLevel; i <= maxLevel; i += levelMod {
-			covering = append(covering, s2.CellIDFromPoint(pvec[0]).Parent(i))
-		}
-	} else {
-		for i := 0; i < len(pvec); i++ {
-			builder.AddEdge(pvec[i], pvec[(i+1)%len(pvec)])
+			pb.AssemblePolygon(&poly, nil)
+			builder.AddPolygon(&poly)
 		}
 		var poly s2.Polygon
 		builder.AssemblePolygon(&poly, nil)
@@ -198,8 +182,6 @@ func (s *setGeoms) BuildPolygon(fn SetOperationFn) (*s2.Polygon, error) {
 		if err != nil {
 			return nil, err
 		}
-		// TODO: If "a" and "b" are disjoint, I imagine "c" will have zero loops...
-		// TODO: that means your return value will have multiple polygons.
 		fn(a, b, &c)
 		a = &c
 	}
@@ -207,24 +189,26 @@ func (s *setGeoms) BuildPolygon(fn SetOperationFn) (*s2.Polygon, error) {
 }
 
 func polygonFromFeature(feat *geojson.Feature) (*s2.Polygon, error) {
+	builder := s2.NewPolygonBuilder(s2.DIRECTED_XOR())
 	geom, err := feat.GetGeometry()
 	if err != nil {
 		return nil, err
 	}
 	poly := geom.(*geojson.Polygon)
-	var v []float64
-	for _, coord := range poly.Coordinates[0] {
-		v = append(v, float64(coord[0]))
-		v = append(v, float64(coord[1]))
-	}
-	var points []s2.Point
-	for i := 0; i < len(v); i += 2 {
-		ll := s2.LatLngFromDegrees(v[i+1], v[i])
-		points = append(points, s2.PointFromLatLng(ll))
-	}
-	builder := s2.NewPolygonBuilder(s2.DIRECTED_XOR())
-	for i := 0; i < len(points); i++ {
-		builder.AddEdge(points[i], points[(i+1)%len(points)])
+	for i := 0; i < len(poly.Coordinates); i++ {
+		var v []float64
+		var points []s2.Point
+		for _, coord := range poly.Coordinates[i] {
+			v = append(v, float64(coord[0]))
+			v = append(v, float64(coord[1]))
+		}
+		for j := 0; j < len(v); j += 2 {
+			ll := s2.LatLngFromDegrees(v[j+1], v[j])
+			points = append(points, s2.PointFromLatLng(ll))
+		}
+		for j := 0; j < len(points); j++ {
+			builder.AddEdge(points[j], points[(j+1)%len(points)])
+		}
 	}
 	var out s2.Polygon
 	builder.AssemblePolygon(&out, nil)
@@ -236,8 +220,7 @@ func polygonToGeoJson(poly *s2.Polygon) *geojson.Polygon {
 	for i := 0; i < poly.NumLoops(); i++ {
 		loop := poly.Loop(i)
 		var coords geojson.Coordinates
-		// +1 to close loop.
-		for j := 0; j < loop.NumVertices()+1; j++ {
+		for j := 0; j <= loop.NumVertices(); j++ {
 			ll := s2.LatLngFromPoint(*loop.Vertex(j))
 			lat := geojson.CoordType(ll.Lat.Degrees())
 			lng := geojson.CoordType(ll.Lng.Degrees())
@@ -249,7 +232,6 @@ func polygonToGeoJson(poly *s2.Polygon) *geojson.Polygon {
 }
 
 func union(w http.ResponseWriter, r *http.Request) {
-	t0 := time.Now()
 	w.Header().Set("Content-Type", "application/json")
 	decoder := json.NewDecoder(r.Body)
 	var geoms setGeoms
@@ -268,7 +250,6 @@ func union(w http.ResponseWriter, r *http.Request) {
 	if err := enc.Encode(collection); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	log.Println("Request took:", time.Since(t0))
 }
 
 func intersection(w http.ResponseWriter, r *http.Request) {
