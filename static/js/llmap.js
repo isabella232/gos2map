@@ -1,14 +1,5 @@
-var baseurl = function(part) {
-    return '/api' + part;
-}
-
-var method = 'POST';
-if (window.location.host == 'localhost') {
-    baseurl = function(part) {
-        return 'http://localhost:8080' + part + '?callback=?';
-    }
-    method = 'GET';
-}
+var color0 = '#F52887';
+var color1 = '#571B7E';
 
 L.Control.Command = L.Control.extend({
     options: {
@@ -34,152 +25,20 @@ L.control.command = function (options) {
 };
 
 var PageController = Backbone.Model.extend({
-    /**
-     * The earth's radius in meters
-     * @constant
-     * @type {number}
-     */
-    EARTH_RADIUS_M: 6371 * 1000,
-
     geometries: [],
-
-    /**
-     * @param {number} degrees
-     * @return {number}
-     */
-    degreesToRadians: function(degrees) {
-        return degrees * 0.0174532925;
-    },
-
-    /**
-     * @param {L.LatLng} pointA
-     * @param {L.LatLng} pointB
-     * @return {number}
-     */
-    distanceBetween: function(pointA, pointB) {
-        var latRadA = this.degreesToRadians(pointA.lat);
-        var latRadB = this.degreesToRadians(pointB.lat);
-        var lngRadA = this.degreesToRadians(pointA.lng);
-        var lngRadB = this.degreesToRadians(pointB.lng);
-
-        return Math.acos(Math.sin(latRadA) * Math.sin(latRadB) +
-                         Math.cos(latRadA) * Math.cos(latRadB) * Math.cos(lngRadA - lngRadB)) * this.EARTH_RADIUS_M;
-    },
-
-    /*
-     * @returns {bool}
-     */
-    isReverseOrder: function() {
-        return this.$reverseOrder.is(':checked');
-    },
-
-
-    setReverseOrder: function() {
-        return this.$reverseOrder.attr("checked", "checked");
-    },
-
-    setNormalOrder: function() {
-        return this.$normalOrder.attr("checked", "checked");
-    },
-
-
-    /*
-     * @returns {bool}
-     */
-    inPolygonMode: function() {
-        return this.$polygonMode.is(':checked');
-    },
-
-    setPolygonMode: function() {
-        return this.$polygonMode.attr('checked', 'checked');
-    },
-
-
-    /*
-     * @returns {bool}
-     */
-    inPointMode: function() {
-        return this.$pointMode.is(':checked');
-    },
-
-    setPointMode: function() {
-        return this.$pointMode.attr('checked', 'checked');
-    },
-
 
     showS2Covering: function() {
         return this.$s2coveringButton.is(':checked')
     },
 
-
-    shouldClear: function() {
-        return this.$clearButton.is(':checked');
-    },
-
-    /*
-     * @returns {bool}
-     */
-    inLineMode: function() {
-        return this.$lineMode.is(':checked');
-    },
-    setLineMode: function() {
-        return this.$lineMode.attr('checked', 'checked');
-    },
-
-    /*
-     * @returns {bool}
-     */
-    inCircleMode: function() {
-        return this.$circleMode.is(':checked');
-    },
-    setCircleMode: function() {
-        return this.$circleMode.attr('checked', 'checked');
-    },
-
     resetDisplay: function() {
-        if (this.shouldClear()) {
-            this.layerGroup.clearLayers();
-        }
+        this.layerGroup.clearLayers();
+        this.drawnItems.clearLayers();
         this.$infoArea.empty();
     },
 
     addInfo: function(msg) {
         this.$infoArea.append($('<div>' + msg + '</div>'));
-    },
-
-    getPoints: function(tokens) {
-        var points = [];
-        if (!tokens) {
-            return points;
-        }
-
-        if ((tokens.length % 2) != 0) {
-            window.alert("extracted an odd number of number tokens, not plotting");
-            return points;
-        }
-
-        this.setHash(tokens);
-
-        var isReverseOrder = this.isReverseOrder();
-        for (var i = 0; i < tokens.length; i+=2) {
-            if (tokens[i] > 90) {
-                isReverseOrder = true;
-                this.setReverseOrder();
-            }
-        }
-
-        _(_.range(0, tokens.length, 2)).each(function(i) {
-            if (isReverseOrder) {
-                points.push(
-                    new L.LatLng(tokens[i+1], tokens[i])
-                );
-            } else {
-                points.push(
-                    new L.LatLng(tokens[i], tokens[i+1])
-                );
-            }
-        });
-        return points;
     },
 
     cellDescription: function(cell) {
@@ -197,7 +56,7 @@ var PageController = Backbone.Model.extend({
      */
     renderCell: function(cell, color, extraDesc, opacity) {
         if (!color) {
-            color = "#ff0000"
+            color = color1;
         }
 
         opacity = opacity || 0.2;
@@ -217,15 +76,14 @@ var PageController = Backbone.Model.extend({
         var geodesic = L.geodesic([points], {steps:10});
         var geodesicPoints = geodesic.getLatLngs();
 
-        var polygon = new L.Polygon(geodesicPoints,
-                                    {
-                                        color: color,
-                                        weight: 1,
-                                        fill: true,
-                                        fillOpacity: opacity
-                                    });
-        polygon.bindPopup(description);
+        var polygon = new L.Polygon(geodesicPoints, {
+            color: color,
+            weight: 2,
+            fill: true,
+            fillOpacity: opacity
+        });
 
+        polygon.bindPopup(description);
         this.layerGroup.addLayer(polygon);
         return polygon;
     },
@@ -250,68 +108,19 @@ var PageController = Backbone.Model.extend({
             }
             bounds = bounds.extend(p.getBounds());
         });
-        //    this.map.setView(bounds.getCenter(), this.map.getBoundsZoom(bounds), true);
-        this.map.setView(bounds.getCenter())
-        this.map.fitBounds(bounds);
-    },
-
-    idsCallback: function() {
-        this.resetDisplay();
-
-        var ids = this.$boundsInput.val()
-            .replace(/^\s+/g, '')
-            .replace(/ /g, ',')
-            .replace(/\n/g, ',')
-            .replace(/[^\w\s\.\-\,]|_/g, '');
-
-        var idList = _(ids.split(',')).filter(function(id) {
-            if (id == '') {
-                return false;
-            }
-            return true;
-        });
-        $.ajax({
-            url: baseurl('/s2info'),
-            type: method,
-            dataType: 'json',
-            data: {
-                'id': idList.join(',')
-            },
-            success: _.bind(this.renderS2Cells, this)
-        });
-    },
-
-    renderMarkers: function(points) {
-        var bounds = new L.LatLngBounds(_.map(points, function(p) {
-            return p.getLatLng();
-        }));
-
-        _.each(points, _.bind(function(p) {
-            this.layerGroup.addLayer(p);
-        }, this));
-
         this.processBounds(bounds);
     },
 
     processBounds: function(bounds) {
-        if (!this.shouldClear() && !!this.previousBounds) {
-            bounds = this.previousBounds.extend(bounds)
+        if (!this.previousBounds) {
+            this.previousBounds = bounds;
         }
-        this.previousBounds = bounds;
-
-        /*
-          var zoom = this.map.getBoundsZoom(bounds) - 1;
-
-          // TODO: add control offset logic?
-          var centerPixel = this.map.project(bounds.getCenter(), zoom);
-          var centerPoint = this.map.unproject(centerPixel, zoom)
-          this.map.setView(centerPoint, zoom);
-        */
-        this.map.setView(bounds.getCenter(), this.map.getBoundsZoom(bounds)-1, true);
+        this.previousBounds = this.previousBounds.extend(bounds);
+        this.map.setView(this.previousBounds.getCenter(),
+                         this.map.getBoundsZoom(this.previousBounds), false);
     },
 
     renderCovering: function(latlngs) {
-        console.log(latlngs);
         if (this.showS2Covering()) {
             var data = {};
             if (latlngs['type'] && latlngs['geometry']) {
@@ -338,8 +147,8 @@ var PageController = Backbone.Model.extend({
             }
 
             $.ajax({
-                url: baseurl('/s2cover'),
-                type: method,
+                url: '/a/s2cover',
+                type: 'POST',
                 dataType: 'json',
                 data: data,
                 success: _.bind(this.renderS2Cells, this)
@@ -347,239 +156,64 @@ var PageController = Backbone.Model.extend({
         }
     },
 
-    renderPolygon: function(polygon, bounds, dontClear, points) {
-        if (!dontClear) {
-            this.resetDisplay();
+    renderFeatureCovering: function(geojsonFeature) {
+        var points = [];
+        var newFeature = {
+            'type': 'Feature',
+            'properties': {},
+            'geometry': {'type': 'Polygon', 'coordinates': []},
         }
-
-        this.layerGroup.addLayer(polygon);
-
-        this.processBounds(bounds);
-
-        if (typeof(polygon.getLatLngs) != "undefined") {
-            this.renderCovering(polygon.getLatLngs());
-        } else if (points) {
-            this.renderCovering(points);
+        console.log('trying to load')
+        coords = geojsonFeature['geometry']['coordinates'];
+        flatcoords = _.flatten(coords);
+        for (var i = 0; i < flatcoords.length; i+=2) {
+            points.push(new L.LatLng(flatcoords[i+1], flatcoords[i]));
         }
+        for (var i = 0; i < coords.length; i++) {
+            var pts = [];
+            var geomCoords = [];
+            for (var j = 0; j < coords[i].length; j++) {
+                var ll = new L.LatLng(coords[i][j][1], coords[i][j][0]);
+                pts.push(ll);
+            }
+            var geodesic = L.geodesic([pts], {steps:10});
+            var geodesicPoints = geodesic.getLatLngs();
+            var newCoords = [];
+            for (var j = 0; j < geodesicPoints[0].length; j++) {
+                geomCoords.push([geodesicPoints[0][j].lng, geodesicPoints[0][j].lat]);
+            }
+            newFeature['geometry']['coordinates'].push(geomCoords);
+        }
+        this.renderCovering(newFeature);
     },
 
     boundsCallback: function() {
         this.setHash();
         this.resetDisplay();
-        var bboxstr = this.$boundsInput.val() || this.placeholder;
-
+        var geojsonFeature = null;
+        var bboxstr = this.editor.getValue();
         try {
             console.log('trying json parse')
             geojsonFeature = JSON.parse(bboxstr);
         } catch(e) {
             console.log(e)
             console.log('could not parse')
-            geojsonFeature = null;
-        }
-
-        try {
-            var wkt = new Wkt.Wkt();
-            console.log(bboxstr);
-            wktFeature = wkt.read(bboxstr);
-        } catch(e) {
-            console.log(e)
-            console.log('could not parse as wkt')
-            wktFeature = null;
-        }
-
-
-        var points = [];
-
-        /* if (wktFeature) {
-           polygon = wkt.toObject({color: 'blue'});
-           console.log(polygon);
-           //this.renderPolygon(polygon, polygon.getBounds())
-           } else */ if (geojsonFeature) {
-               if (geojsonFeature['type'] && geojsonFeature['coordinates']) {
-                   geojsonFeature = {
-                       'type': 'Feature',
-                       'properties': {},
-                       'geometry': geojsonFeature
-                   }
-               }
-               console.log(geojsonFeature)
-
-               if (geojsonFeature['type'] && geojsonFeature['geometry']) {
-                   var newFeature = {
-                       'type': 'Feature',
-                       'properties': {},
-                       'geometry': {'type': 'Polygon', 'coordinates': []},
-                   }
-                   console.log('trying to load')
-                   polygon = L.geoJson(geojsonFeature)
-                   console.log(geojsonFeature['geometry']['coordinates'])
-                   console.log(_.flatten(geojsonFeature['geometry']['coordinates']))
-                   coords = geojsonFeature['geometry']['coordinates'];
-                   flatcoords = _.flatten(coords);
-                   for (var i = 0; i < flatcoords.length; i+=2) {
-                       points.push(new L.LatLng(flatcoords[i+1], flatcoords[i]));
-                   }
-                   for (var i = 0; i < coords.length; i++) {
-                       var pts = [];
-                       var geomCoords = [];
-                       for (var j = 0; j < coords[i].length; j++) {
-                           var ll = new L.LatLng(coords[i][j][1], coords[i][j][0]);
-                           pts.push(ll);
-                       }
-                       var geodesic = L.geodesic([pts], {steps:10});
-                       var geodesicPoints = geodesic.getLatLngs();
-                       var newCoords = [];
-                       for (var j = 0; j < geodesicPoints[0].length; j++) {
-                           geomCoords.push([geodesicPoints[0][j].lng, geodesicPoints[0][j].lat]);
-                       }
-                       newFeature['geometry']['coordinates'].push(geomCoords);
-                   }
-                   polygon = L.geoJson(newFeature, {
-                       style: function(f) {
-                           return {weight: 1};
-                       }
-                   });
-                   this.renderPolygon(polygon, polygon.getBounds());//, false, points);
-                   this.renderCovering(newFeature);
-                   this.setReverseOrder();
-                   return;
-               }
-           } else {
-               var regex = /[+-]?\d+\.\d+/g;
-               var bboxParts = bboxstr.match(regex);
-
-               points = this.getPoints(bboxParts);
-           }
-
-        var polygonPoints = []
-        if (points.length == 0) {
-            // try s2 parsing!
-            this.idsCallback();
             return;
         }
-
-        this.resetDisplay();
-
-        if (points.length == 1 && !this.inCircleMode()  ) {
-            var regex2 = /@(\d+)$/;
-            var matches = bboxstr.match(regex2);
-            if (matches) {
-                this.$minLevel.val(matches[1]);
-                this.$s2coveringButton.attr('checked', 'checked');
+        var collection = L.geoJson(geojsonFeature, {
+            style: function(f) {
+                return {weight: 2, color: color0};
             }
-
-            var ll = points[0];
-            //    this.map.setView(ll, 15);
-            var marker = new L.Marker(ll);
-            this.renderMarkers([marker]);
-            this.renderCovering([ll]);
-        } else if (this.inPolygonMode()) {
-            if (points.length == 2) {
-                var ll1 = points[0]
-                var ll2 = points[1]
-                var bounds = new L.LatLngBounds(ll1, ll2);
-
-                var ne = bounds.getNorthEast();
-                var sw = bounds.getSouthWest();
-                var nw = new L.LatLng(ne.lat, sw.lng);
-                var se = new L.LatLng(sw.lat, ne.lng);
-
-                // counter clockwise
-                polygonPoints = [sw, se, ne, nw];
-            } else {
-                polygonPoints = points;
-            }
-            var geodesic = L.geodesic([polygonPoints], {steps:10});
-            var geodesicPoints = geodesic.getLatLngs();
-            var polygon = new L.Polygon(geodesicPoints,
-                                        {color: "#0000ff", weight: 1, fill: true, fillOpacity: 0.2});
-            this.renderPolygon(polygon, polygon.getBounds())
-        } else if (this.inCircleMode()) {
-            var bounds = null;
-            var radius = this.$radiusInput.val();
-            _.each(points, function(point) {
-                var polygon = LGeo.circle(point, radius,
-                                          {color: "#0000ff", weight: 1, fill: true, fillOpacity: 0.2});
-                this.renderPolygon(polygon, polygon.getBounds(), true);
-                if (bounds == null) {
-                    bounds = polygon.getBounds();
-                } else {
-                    bounds = bounds.extend(polygon.getBounds());
-                }
-            }, this);
-            map.fitBounds(bounds);
-        } else if (this.inLineMode()) {
-            var polyline = new L.Polyline(points,
-                                          {color: "#0000ff", weight: 4, fill: false, fillOpacity: 0.2});
-            this.renderPolygon(polyline, polyline.getBounds());
-
-            _.each(_.range(0, points.length - 1), _.bind(function(index) {
-                var a = points[index];
-                var b = points[(index+1) % points.length];
-                var distance = this.distanceBetween(a, b);
-                this.addInfo(a + ' --> ' + b + '<br/>--- distance: ' + distance + 'm');
-            }, this))
-                }
-
-        var dotIcon = L.icon({
-            iconAnchor: [5, 5],
-            iconUrl: '/static/img/blue-dot.png',
-        })
-        var markerOpts = {}
-        if (!this.inPointMode()) {
-            //if (this.inPolygonMode()) {
-            markerOpts['icon'] = dotIcon;
-        }
-
-        if (points.length > 1) {
-            var markers = _.map(points, function(p, index) {
-                var marker = new L.Marker(p, markerOpts);
-                marker.bindPopup('Point ' + (index  + 1) + ': ' + p.lat + ',' + p.lng);
-                return marker;
-            });
-            this.renderMarkers(markers);
-        }
-
-        // fourSq.api.services.Geo.s2cover({
-        //     ne: ne.lat + ',' + ne.lng,
-        //     sw: sw.lat + ',' + sw.lng
-        //   },
-        //   _.bind(this.renderCells, this)
-        // );
+        });
+        collection.eachLayer(_.bind(this.addDrawnLayer, this));
     },
 
-    baseMaps: function() {
-        var stamenAttr = 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, under <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>. Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, under <a href="http://creativecommons.org/licenses/by-sa/3.0">CC BY SA</a>.'
-
-        return [
-            ["Stamen Toner Lite", new L.StamenTileLayer("toner-lite"), stamenAttr],
-            ["Stamen Toner", new L.StamenTileLayer("toner"), stamenAttr],
-            ["Stamen Terrain", new L.StamenTileLayer("terrain"), stamenAttr]
-        ]
-    }(),
-
-    switchBaseMap: function(baseMapEntry) {
-        console.log(this.map.hasLayer(this.baseMap[1]));
-        this.map.removeLayer(this.baseMap[1]);
-        this.attribution.removeAttribution(this.baseMap[2]);
-
-        this.map.addLayer(baseMapEntry[1]);
-        this.attribution.addAttribution(baseMapEntry[2]);
-        this.baseMap = baseMapEntry;
-        this.map.invalidateSize();
-    },
-
-    getMode: function() {
-        return $($.find('[name=mode]:checked')[0]).attr('data-mode');
-    },
-
-    updateMode: function() {
-        var mode = this.getMode();
-        if (mode == 'circle') {
-            $($.find('.circleOptions')[0]).show();
-        } else {
-            $($.find('.circleOptions')[0]).hide();
+    addDrawnLayer: function(l) {
+        this.drawnItems.addLayer(l);
+        if (this.showS2Covering()) {
+            this.renderFeatureCovering(l.toGeoJSON());
         }
+        this.processBounds(l.getBounds());
     },
 
     updateS2CoverMode: function() {
@@ -588,10 +222,6 @@ var PageController = Backbone.Model.extend({
         } else {
             this.$s2options.hide();
         }
-    },
-
-    getRadius: function() {
-        return this.$radiusInput.val();
     },
 
     showSetOperators: function() {
@@ -613,22 +243,41 @@ var PageController = Backbone.Model.extend({
     },
 
     operationCallback: function(data) {
-        this.geometries = [data];
+        this.previousBounds = null;
         this.drawnItems.clearLayers();
         this.hideSetOperators();
-        this.$boundsInput.val(JSON.stringify(data));
+        this.editor.setValue(JSON.stringify(data, null, 2));
         this.boundsCallback();
         this.setHash();
     },
 
     initialize: function() {
-        this.baseMap = this.baseMaps[0];
+        this.editor = CodeMirror.fromTextArea(document.getElementById('textarea'), {
+            lineNumbers: true,
+        });
+
+        this.editor.setValue(JSON.stringify({
+            "type": "FeatureCollection", "features": []
+        }, null, 2));
+
+        this.editor.on('change', _.bind(function(doc, obj) {
+            console.log(obj);
+            if (obj.origin == "setValue") return;
+            if (obj.origin == "+delete") {
+                if (doc.getValue().length == 0) {
+                    doc.setValue(JSON.stringify({
+                        "type": "FeatureCollection", "features": []
+                    }, null, 2));
+                }
+            }
+            this.boundsCallback();
+        }, this));
 
         this.union = L.control.command({
             text: '&#x22C3;',
             title: 'Set Union',
             click: _.bind(function() {
-                $.post("/a/union", JSON.stringify({"geoms":this.geometries}),
+                $.post("/a/union", JSON.stringify({"geoms":this.drawnItems.toGeoJSON()}),
                        _.bind(this.operationCallback, this));
             }, this)
         });
@@ -637,7 +286,7 @@ var PageController = Backbone.Model.extend({
             text: '&#x22C2;',
             title: 'Set Intersection',
             click: _.bind(function() {
-                $.post("/a/intersection", JSON.stringify({"geoms":this.geometries}),
+                $.post("/a/intersection", JSON.stringify({"geoms":this.drawnItems.toGeoJSON()}),
                        _.bind(this.operationCallback, this));
             }, this)
         });
@@ -646,21 +295,24 @@ var PageController = Backbone.Model.extend({
             text: '&#x2212;',
             title: 'Set Difference',
             click: _.bind(function() {
-                $.post("/a/difference", JSON.stringify({"geoms":this.geometries}),
+                $.post("/a/difference", JSON.stringify({"geoms":this.drawnItems.toGeoJSON()}),
                        _.bind(this.operationCallback, this));
             }, this)
         });
 
         var opts = {
             attributionControl: false,
-            zoomControl: false
+            zoomControl: false,
         }
 
-        this.map = new L.Map('map', opts);
+        L.mapbox.accessToken = 'pk.eyJ1IjoiZGF2aWRyZXlub2xkcyIsImEiOiJlZkpBeXBFIn0.S4DYvY-hIfKnvhfdXMuH5A';
+        this.map = L.mapbox.map('map', 'davidreynolds.lefk0pn0', opts);
+
         var zoom = new L.Control.Zoom()
         zoom.setPosition('topright');
         this.map.addControl(zoom);
 
+        this.drawnFeatureCollection = [];
         this.drawnItems = new L.FeatureGroup();
         this.map.addLayer(this.drawnItems);
 
@@ -670,15 +322,15 @@ var PageController = Backbone.Model.extend({
                 marker: null,
                 circle: {
                     shapeOptions: {
-                        weight: 1,
-                        color: '#C30000',
+                        weight: 2,
+                        color: color0,
                     }
                 },
                 polyline: null,
                 rectangle: {
                     shapeOptions: {
-                        weight: 1,
-                        color: '#C30000',
+                        weight: 2,
+                        color: color0,
                     }
                 },
                 polygon: {
@@ -688,7 +340,8 @@ var PageController = Backbone.Model.extend({
                         timeout: 1000
                     },
                     shapeOptions: {
-                        color: '#C30000'
+                        weight: 2,
+                        color: color0
                     },
                     showArea: true
                 },
@@ -700,22 +353,16 @@ var PageController = Backbone.Model.extend({
         this.map.addControl(drawControl);
 
         this.map.on('draw:created', _.bind(this.drawCreatedCallback, this));
+        this.map.on('draw:deleted', _.bind(this.drawDeletedCallback, this));
+        this.map.on('draw:edited', _.bind(this.drawEditedCallback, this));
 
         this.attribution = new L.Control.Attribution();
         this.attribution.addAttribution("<a href=\"http://code.google.com/p/s2-geometry-library/\">S2</a>");
         this.map.addControl(this.attribution);
 
+        // For coverings.
         this.layerGroup = new L.LayerGroup();
         this.map.addLayer(this.layerGroup);
-
-        var basemapSelector = $('.basemapSelector');
-        _.each(this.baseMaps, function (basemapEntry, index) {
-            basemapSelector.append(
-                $('<option></option>').attr("value", index).text(basemapEntry[0])
-            )
-        });
-        this.map.addLayer(this.baseMap[1]);
-
         this.map.on('click', _.bind(function(e) {
             if (e.originalEvent.metaKey ||
                 e.originalEvent.altKey ||
@@ -730,38 +377,15 @@ var PageController = Backbone.Model.extend({
         this.$el = $(document);
         this.$infoArea = this.$el.find('.info');
 
-        this.$reverseOrder = this.$el.find('.lnglatMode');
-        this.$normalOrder = this.$el.find('.latlngMode');
-
-        this.$lineMode = this.$el.find('.lineMode');
-        this.$polygonMode = this.$el.find('.polygonMode');
-        this.$pointMode = this.$el.find('.pointMode');
-        this.$circleMode = this.$el.find('.circleMode');
-
-        this.$radiusInput = this.$el.find('.radiusInput');
-
         this.$boundsButton = this.$el.find('.boundsButton');
-        this.$boundsInput = this.$el.find('.boundsInput');
-
-        this.$clearButton = this.$el.find('.clearMap');
-
-        this.$modeSelect = this.$el.find('[name=mode]');
-        this.$modeSelect.change(_.bind(function() {
-            this.updateMode();
-        }, this));
-
         this.$boundsButton.click(_.bind(this.boundsCallback, this));
-        this.$boundsInput.keypress(/** @param {jQuery.Event} e */ _.bind(function(e) {
-            // search on enter only
-            if (e.which == 13) {
-                // this.boundsCallback();
-            }
-        }, this));
 
         this.$s2options = this.$el.find('.s2options');
         this.$s2coveringButton = this.$el.find('.s2cover');
         this.$s2coveringButton.change(_.bind(function() {
             this.updateS2CoverMode();
+            this.setHash();
+            this.boundsCallback();
         }, this));
 
         this.$maxCells = this.$el.find('.max_cells');
@@ -772,49 +396,36 @@ var PageController = Backbone.Model.extend({
         // https://github.com/blackmad/s2map
     },
 
+    drawDeletedCallback: function(e) {
+    },
+
+    drawEditedCallback: function(e) {
+    },
+
     drawCreatedCallback: function(e) {
         var type = e.layerType,
             layer = e.layer;
-
         if (type === 'polygon' || type === 'rectangle' || type === 'circle') {
             if (type == 'circle') {
                 layer = LGeo.circle(layer.getLatLng(), layer.getRadius(), {
-                    color: '#0000ff',
-                    weight: 1,
+                    color: color0,
+                    weight: 2,
                     fill: true,
                     fillOpacity: 0.2,
                 });
             }
-            this.geometries.push(layer.toGeoJSON());
-            if (this.geometries.length >= 2) {
+            this.addDrawnLayer(layer);
+            this.editor.setValue(JSON.stringify(this.drawnItems.toGeoJSON(), null, 2));
+            this.setHash();
+            if (this.drawnItems.getLayers().length >= 2) {
                 this.showSetOperators();
             } else {
                 this.hideSetOperators();
             }
         }
-
-        this.drawnItems.addLayer(layer);
     },
 
     initMapPage: function() {
-        var placeholders = [
-            '40.74,-74.0',
-            '40.74,-74.0,40.75,-74.1',
-            'bbox: { \n' +
-                '  ne: { ' +
-                '     lat: 40.74,' +
-                '     lng: -74.0' +
-                '   },' +
-                '   sw: {' +
-                '     lat: 40.75, ' +
-                '     lng: -74.1 ' +
-                '   }, ' +
-                ' }',
-        ];
-
-        this.placeholder = _.first(_.shuffle(placeholders));
-        this.$boundsInput.attr('placeholder', this.placeholder);
-
         this.parseHash(window.location.hash.substring(1) || window.location.search.substring(1));
         this.updateS2CoverMode();
         this.boundsCallback();
@@ -829,18 +440,6 @@ var PageController = Backbone.Model.extend({
             h += k + "=" + v;
         }
 
-        if (this.isReverseOrder()) {
-            addParam("order", "lnglat")
-        } else {
-            addParam("order", "latlng")
-        }
-
-        addParam("mode", this.getMode());
-
-        if (this.getMode() == 'circle') {
-            addParam("radius", this.getRadius());
-        }
-
         if (this.showS2Covering()) {
             addParam("s2", 'true');
             addParam("s2_min_level", this.$minLevel.val());
@@ -850,8 +449,7 @@ var PageController = Backbone.Model.extend({
         } else {
             addParam("s2", 'false');
         }
-
-        addParam("points", this.$boundsInput.val());
+        addParam("geojson", JSON.stringify(JSON.parse(this.editor.getValue())));
         window.location.hash = h;
     },
 
@@ -864,126 +462,25 @@ var PageController = Backbone.Model.extend({
             pair = querystring[i].split('=');
             params[d(pair[0])] = d(pair[1]);
         }
-
         return params;
     },
 
     parseHash: function(hash) {
         if (hash.indexOf('=') == -1) {
-            this.$boundsInput.val(hash);
             return;
         }
 
         var params = this.deparam(hash);
-
-        if (params.order == 'lnglat') {
-            this.setReverseOrder();
-        } else {
-            this.setNormalOrder();
-        }
-
-        if (params.mode == 'line') {
-            this.setLineMode();
-        } else if (params.mode == 'point') {
-            this.setPointMode();
-        } else if (params.mode == 'circle') {
-            this.setCircleMode();
-        } else {
-            this.setPolygonMode();
-        }
-
-        this.updateMode();
         this.updateS2CoverMode();
 
         if (params.s2 == 'true') {
             this.$s2coveringButton.attr('checked', 'checked');
         }
 
-        this.$radiusInput.val(params.radius);
-
         this.$maxCells.val(params.max_cells);
         this.$minLevel.val(params.min_level);
         this.$maxLevel.val(params.max_level);
         this.$levelMod.val(params.level_mod);
-
-        this.$boundsInput.val(params.points);
+        this.editor.setValue(JSON.stringify(JSON.parse(params.geojson), null, 2));
     },
-
-    /**
-     * @param {Array.<fourSq.api.models.geo.S2Response>} cells
-     * @return {Array.<L.Polygon>}
-     */
-    renderCellsForHeatmap: function(cellColorMap, cellDescMap, cellOpacityMap, cells) {
-        var polygons = _(cells).filter(function(cell) { return cell.token != "X"; })
-            .map(_.bind(function(c) {
-                var color = cellColorMap[c.token] || cellColorMap[c.id] || cellColorMap[c.id_signed];
-                var opacity = cellOpacityMap[c.token] || cellOpacityMap[c.id] || cellOpacityMap[c.id_signed];
-                if (color) { color = '#' + color; }
-                var desc = cellDescMap[c.token] || cellDescMap[c.id] || cellDescMap[c.id_signed];
-                return this.renderCell(c, color, desc, opacity);
-            }, this));
-
-        var bounds = null;
-        _.each(polygons, function(p) {
-            if (!bounds) {
-                bounds = new L.LatLngBounds([p.getBounds()]);
-            }
-            bounds = bounds.extend(p.getBounds());
-        });
-        this.map.fitBounds(bounds);
-    },
-
-    renderHeatmapHelper: function(lines) {
-
-        var cellColorMap = {};
-        var cellOpacityMap = {};
-        var cellDescMap = {};
-        var cells = []
-        _(lines).map(function(line) {
-            var parts = line.split(',');
-            var cell = parts[0];
-            var color = parts[1];
-            var desc = parts[2];
-            var opacity = parts[3] || 0.5;
-            cells.push(cell);
-            cellColorMap[cell] = color;
-            cellOpacityMap[cell] = opacity;
-            if (desc) {
-                cellDescMap[cell] = desc;
-            }
-        });
-
-        $.ajax({
-            url: baseurl('/s2info'),
-            type: method,
-            dataType: 'json',
-            data: {
-                'id': cells.join(',')
-            },
-            success: _.bind(this.renderCellsForHeatmap, this, cellColorMap, cellDescMap, cellOpacityMap)
-        });
-    },
-
-    renderHeatmap: function(url) {
-        console.log(url);
-        if (url.indexOf('http') == 0) {
-	    $.ajax({
-	        url: baseurl('/fetch'),
-	        // type: method,
-	        type: 'GET',
-	        data: {
-	            'url': url
-	        },
-	        success: _.bind(function(data) {
-	            var lines = data.split('\n');
-                    this.renderHeatmapHelper(lines);
-                }, this)
-	    });
-        } else {
-            console.log(url);
-            var lines = url.split(';');
-            this.renderHeatmapHelper(lines);
-        }
-    }
 });
-

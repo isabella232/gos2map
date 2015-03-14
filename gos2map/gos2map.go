@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/davidreynolds/gos2/s2"
 	"github.com/gorilla/mux"
@@ -28,10 +30,10 @@ type LatLng struct {
 }
 
 type CellIDJSON struct {
-	Id       uint64    `json:"id"`
-	IdSigned int64     `json:"id_signed"`
+	Id       string    `json:"id"`
+	IdSigned string    `json:"id_signed"`
 	Token    string    `json:"token"`
-	Pos      uint64    `json:"pos"`
+	Pos      string    `json:"pos"`
 	Face     int       `json:"face"`
 	Level    int       `json:"level"`
 	LL       LatLng    `json:"ll"`
@@ -51,10 +53,10 @@ func cellIdsToJSON(w http.ResponseWriter, ids []s2.CellID) {
 		}
 		idJson.LL.Lat = center.Lat.Degrees()
 		idJson.LL.Lng = center.Lng.Degrees()
-		idJson.Id = uint64(cell.Id())
-		idJson.IdSigned = int64(cell.Id())
+		idJson.Id = strconv.FormatUint(uint64(cell.Id()), 10)
+		idJson.IdSigned = strconv.FormatInt(int64(cell.Id()), 10)
 		idJson.Token = cell.Id().ToToken()
-		idJson.Pos = cell.Id().Pos()
+		idJson.Pos = strconv.FormatUint(cell.Id().Pos(), 10)
 		idJson.Face = cell.Id().Face()
 		idJson.Level = cell.Id().Level()
 		covering = append(covering, idJson)
@@ -162,7 +164,7 @@ func hasError(w http.ResponseWriter, err error) bool {
 }
 
 type setGeoms struct {
-	Geoms []geojson.Feature `json:"geoms"`
+	Geoms *geojson.FeatureCollection `json:"geoms"`
 }
 
 type SetOperationFn func(a, b, c *s2.Polygon) error
@@ -183,26 +185,28 @@ func differenceOperation(a, b, c *s2.Polygon) error {
 }
 
 func (s *setGeoms) BuildPolygon(fn SetOperationFn) (*s2.Polygon, error) {
-	if len(s.Geoms) < 2 {
+	if len(s.Geoms.Features) < 2 {
 		return nil, errors.New("Need at least two polygons")
 	}
-	a, err := polygonFromFeature(s.Geoms[0])
+	a, err := polygonFromFeature(s.Geoms.Features[0])
 	if err != nil {
 		return nil, err
 	}
-	for i := 1; i < len(s.Geoms); i++ {
+	for i := 1; i < len(s.Geoms.Features); i++ {
 		var c s2.Polygon
-		b, err := polygonFromFeature(s.Geoms[i])
+		b, err := polygonFromFeature(s.Geoms.Features[i])
 		if err != nil {
 			return nil, err
 		}
+		// TODO: If "a" and "b" are disjoint, I imagine "c" will have zero loops...
+		// TODO: that means your return value will have multiple polygons.
 		fn(a, b, &c)
 		a = &c
 	}
 	return a, nil
 }
 
-func polygonFromFeature(feat geojson.Feature) (*s2.Polygon, error) {
+func polygonFromFeature(feat *geojson.Feature) (*s2.Polygon, error) {
 	geom, err := feat.GetGeometry()
 	if err != nil {
 		return nil, err
@@ -245,25 +249,26 @@ func polygonToGeoJson(poly *s2.Polygon) *geojson.Polygon {
 }
 
 func union(w http.ResponseWriter, r *http.Request) {
+	t0 := time.Now()
 	w.Header().Set("Content-Type", "application/json")
 	decoder := json.NewDecoder(r.Body)
 	var geoms setGeoms
-
 	err := decoder.Decode(&geoms)
 	if hasError(w, err) {
 		return
 	}
-
 	a, err := geoms.BuildPolygon(unionOperation)
 	if hasError(w, err) {
 		return
 	}
 	poly := polygonToGeoJson(a)
 	feat := geojson.NewFeature(poly, nil, nil)
+	collection := geojson.NewFeatureCollection([]*geojson.Feature{feat})
 	enc := json.NewEncoder(w)
-	if err := enc.Encode(feat); err != nil {
+	if err := enc.Encode(collection); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+	log.Println("Request took:", time.Since(t0))
 }
 
 func intersection(w http.ResponseWriter, r *http.Request) {
@@ -280,8 +285,9 @@ func intersection(w http.ResponseWriter, r *http.Request) {
 	}
 	poly := polygonToGeoJson(a)
 	feat := geojson.NewFeature(poly, nil, nil)
+	collection := geojson.NewFeatureCollection([]*geojson.Feature{feat})
 	enc := json.NewEncoder(w)
-	if err := enc.Encode(feat); err != nil {
+	if err := enc.Encode(collection); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -300,8 +306,9 @@ func difference(w http.ResponseWriter, r *http.Request) {
 	}
 	poly := polygonToGeoJson(a)
 	feat := geojson.NewFeature(poly, nil, nil)
+	collection := geojson.NewFeatureCollection([]*geojson.Feature{feat})
 	enc := json.NewEncoder(w)
-	if err := enc.Encode(feat); err != nil {
+	if err := enc.Encode(collection); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -309,7 +316,7 @@ func difference(w http.ResponseWriter, r *http.Request) {
 func init() {
 	r := mux.NewRouter()
 	r.HandleFunc("/", IndexHandler)
-	r.HandleFunc("/api/s2cover", S2CoverHandler)
+	r.HandleFunc("/a/s2cover", S2CoverHandler)
 	r.HandleFunc("/a/union", union)
 	r.HandleFunc("/a/intersection", intersection)
 	r.HandleFunc("/a/difference", difference)

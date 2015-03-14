@@ -2,19 +2,17 @@
 <html>
   <head>
     <meta http-equiv="content-type" content="text/html; charset=utf-8">
-    <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.css" />
-    <!--[if lte IE 8]>
-        <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.ie.css" />
-        <![endif]-->
 
-    <script src="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.js"></script>
+    <link rel="stylesheet" href="/static/css/codemirror.css" />
+    <script src="/static/js/codemirror.js"></script>
+    <script src="/static/js/javascript-mode.js"></script>
+
+    <script src='https://api.tiles.mapbox.com/mapbox.js/v2.1.5/mapbox.js'></script>
+    <link href='https://api.tiles.mapbox.com/mapbox.js/v2.1.5/mapbox.css' rel='stylesheet' />
     <script src="/static/js/Leaflet.Geodesic.js"></script>
-    <script type="text/javascript" src="http://maps.stamen.com/js/tile.stamen.js?v1.3.0"></script>
     <script type="text/javascript" src="/static/js/jquery.js"></script>
     <script type="text/javascript" src="/static/js/underscore.js"></script>
     <script type="text/javascript" src="/static/js/backbone-min.js"></script>
-    <script type="text/javascript" src="/static/js/wicket.js"></script>
-    <script type="text/javascript" src="/static/js/wicket-leaflet.js"></script>
     <script type="text/javascript" src="/static/js/leaflet-geodesy.js"></script>
     <link href="https://api.tiles.mapbox.com/mapbox.js/plugins/leaflet-draw/v0.2.2/leaflet.draw.css" rel="stylesheet" />
     <script src="https://api.tiles.mapbox.com/mapbox.js/plugins/leaflet-draw/v0.2.2/leaflet.draw.js"></script>
@@ -22,21 +20,20 @@
 
     <style>
 
-    .info {
+.info {
     display: none;
 }
 
-.leaflet-control-command-interior
-{
-    width: 20px;
-    height: 20px;
-    background-position: 50% 50%;
-    background-repeat: no-repeat;
+.leaflet-control-command-interior {
+    width: 26px;
+    height: 26px;
+    margin: 0 1px;
+    margin-bottom: -5px;
     display: block;
-    padding: 3px;
-    border-radius: 4px;
-    -webkit-border-radius: 4px;
-    -moz-border-radius: 4px;
+    padding: 10px 5px;
+    border-radius: 2px;
+    -webkit-border-radius: 2px;
+    -moz-border-radius: 2px;
     box-shadow: 0 1px 7px rgba(0, 0, 0, 0.65);
     cursor: pointer;
     text-align: center;
@@ -55,8 +52,9 @@ body {
 #map {
     position: absolute;
     top: 0;
+    left: 30%;
     bottom: 0;
-    width: 100%;
+    width: 70%;
 }
 
 .plotButtonBox {
@@ -66,21 +64,17 @@ body {
 }
 
 .controlsBox {
-    padding: 10px;
-    -webkit-border-radius: 15px;
-    -moz-border-radius: 15px;
-    border-radius: 15px;
-
+    font-family: monospace;
     background: #E9EAEE;
     border: 2px solid white;
-    margin: 0 auto;
     box-shadow: 1px 2px 6px rgba(0, 0, 0, 0.5);
     -moz-box-shadow: 1px 2px 6px rgba(0,0,0, 0.5);
     -webkit-box-shadow: 1px 2px 6;
     z-index: 50;
     background: white;
     position: fixed;
-    width: 170px;
+    height: 100%;
+    width: 30%;
 }
 
 .clear { /* generic container (i.e. div) for floating buttons */
@@ -93,7 +87,7 @@ a.button {
     color: #444;
     display: block;
     float: left;
-    font: normal 12px arial, sans-serif;
+    font: normal 12px monospace;
     height: 24px;
     margin-right: 6px;
     padding-right: 18px;
@@ -119,7 +113,32 @@ a.button:active span {
 }
 
 .boundsButton {
-    padding-left: 48px;
+    margin-top: 10px;
+}
+
+.s2options {
+    margin: 10px 0;
+}
+
+.s2options input {
+    margin-bottom: 2px;
+    padding: 2px;
+}
+
+.s2cover {
+    margin-top: 10px;
+}
+
+#textarea {
+    display:none;
+}
+
+.CodeMirror {
+    height: 75%;
+}
+
+.controls {
+    height: 25%;
 }
 
     </style>
@@ -128,77 +147,22 @@ a.button:active span {
     <div id="map" class="map"></div>
 
     <div class="controlsBox">
+      <textarea id="textarea"></textarea>
       <div class="controls">
-        <label>
-          <input type="radio" name="pointmode" value="latlng" class="latlngMode" checked="checked"/>
-          Lat/Lng
-        </label>
-
-        <br/>
-
-        <label>
-          <input type="radio" name="pointmode" value="lnglat" class="lnglatMode"/>
-          Lng/Lat
-        </label>
-
-        <hr/>
-
-        <label>
-          <input type="radio" name="mode" value="polygon" class="polygonMode" data-mode="polygon" checked="checked"/>
-          Polygon mode
-        </label>
-
-        <br/>
-
-        <label>
-          <input type="radio" name="mode" value="line" class="lineMode" data-mode="line"/>
-          Line mode
-        </label>
-
-	<br/>
-
-        <label>
-          <input type="radio" name="mode" value="point" class="pointMode" data-mode="point"/>
-          Point mode
-        </label>
-	<br/>
-        
-        <label>
-          <input type="radio" name="mode" value="circle" class="circleMode" data-mode="circle"/>
-          Circle mode
-        </label>
-
-        <hr/>
-
-        <label>
-          <input type="checkbox" name="clearMap" value="clearMap" class="clearMap" checked/>
-          Clear map on plot
-        </label>
-
-        <br/>
-
         <label>
           <input type="checkbox" name="s2cover" value="clearMap" class="s2cover"/>
           Show s2 covering
         </label>
-
         <div class="s2options" style="display: none">
-          <input size="2" class="min_level" value="1"> min_level <br/>
-          <input size="2" class="max_level" value="30"> max_level <br/>
-          <input size="2" class="max_cells" value="200"> max_cells <br/>
-          <input size="2" class="level_mod" value="1"> level_mod <br/>
+          <input size="3" class="min_level" value="1"> min level <br/>
+          <input size="3" class="max_level" value="30"> max level <br/>
+          <input size="3" class="max_cells" value="200"> max cells <br/>
+          <input size="3" class="level_mod" value="1"> level mod <br/>
+
+          <div class="plotButtonBox">
+            <a class="button boundsButton"><span>Render</span></a>
+          </div> 
         </div>
-
-        <div class="circleOptions" style="display: none">
-          <input size="5" class="radiusInput"> radius (meters)<br/>
-        </div>
-        <br/>
-
-        <textarea class="boundsInput" rows="18"></textarea><br/>
-
-        <div class="plotButtonBox">
-          <a class="button boundsButton"><span>Plot</span></a>
-        </div> 
         
         <div class="info"/>
       </div>
@@ -206,8 +170,8 @@ a.button:active span {
 
     <script>
       $(function() {
-        var Page = new PageController();
-      	Page.initMapPage();
+          var Page = new PageController();
+      	  Page.initMapPage();
       });
     </script>
   </body>
