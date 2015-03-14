@@ -415,6 +415,8 @@ var PageController = Backbone.Model.extend({
     },
 
     drawEditedCallback: function(e) {
+        this.editor.setValue(JSON.stringify(this.drawnItems.toGeoJSON(), null, 2));
+        this.setHash();
     },
 
     drawCreatedCallback: function(e) {
