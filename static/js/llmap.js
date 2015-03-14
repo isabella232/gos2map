@@ -400,6 +400,18 @@ var PageController = Backbone.Model.extend({
     },
 
     drawDeletedCallback: function(e) {
+        this.editor.setValue(JSON.stringify(this.drawnItems.toGeoJSON(), null, 2));
+        this.setHash();
+        if (this.drawnItems.getLayers().length < 2) {
+            this.hideSetOperators();
+        }
+        var bounds = null;
+        this.drawnItems.eachLayer(function(l) {
+            if (bounds === null) { bounds = l.getBounds(); return; }
+            bounds = bounds.extend(l.getBounds());
+        });
+        this.processBounds(bounds);
+        this.previousBounds = bounds;
     },
 
     drawEditedCallback: function(e) {
