@@ -52,9 +52,9 @@ body {
 #map {
     position: absolute;
     top: 0;
-    left: 30%;
+    left: 25%;
     bottom: 0;
-    width: 70%;
+    width: 75%;
 }
 
 .plotButtonBox {
@@ -74,7 +74,7 @@ body {
     background: white;
     position: fixed;
     height: 100%;
-    width: 30%;
+    width: 25%;
 }
 
 .clear { /* generic container (i.e. div) for floating buttons */
@@ -147,7 +147,7 @@ a.button:active span {
     <div id="map" class="map"></div>
 
     <div class="controlsBox">
-      <textarea id="textarea"></textarea>
+      <textarea id="textarea">{{.JSON}}</textarea>
       <div class="controls">
         <label>
           <input type="checkbox" name="s2cover" value="clearMap" class="s2cover"/>

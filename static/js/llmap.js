@@ -205,6 +205,9 @@ var PageController = Backbone.Model.extend({
             }
         });
         collection.eachLayer(_.bind(this.addDrawnLayer, this));
+        if (this.drawnItems.getLayers().length >= 2) {
+            this.showSetOperators();
+        }
     },
 
     addDrawnLayer: function(l) {
@@ -259,19 +262,18 @@ var PageController = Backbone.Model.extend({
             lineNumbers: true,
         });
 
-        this.editor.setValue(JSON.stringify({
-            "type": "FeatureCollection", "features": []
-        }, null, 2));
-
         this.editor.on('change', _.bind(function(doc, obj) {
-            console.log(obj);
-            if (obj.origin == "setValue") return;
+            if (obj.origin == "setValue") {
+                $.post("", doc.getValue());
+                return;
+            }
             if (obj.origin == "+delete") {
                 if (doc.getValue().length == 0) {
                     doc.setValue(JSON.stringify({
                         "type": "FeatureCollection", "features": []
                     }, null, 2));
                 }
+                $.post("", doc.getValue());
             }
             this.boundsCallback();
         }, this));
@@ -436,8 +438,6 @@ var PageController = Backbone.Model.extend({
             this.setHash();
             if (this.drawnItems.getLayers().length >= 2) {
                 this.showSetOperators();
-            } else {
-                this.hideSetOperators();
             }
         }
     },
@@ -463,10 +463,7 @@ var PageController = Backbone.Model.extend({
             addParam("s2_max_level", this.$maxLevel.val());
             addParam("s2_max_cells", this.$maxCells.val());
             addParam("s2_level_mod", this.$levelMod.val());
-        } else {
-            addParam("s2", 'false');
         }
-        addParam("geojson", JSON.stringify(JSON.parse(this.editor.getValue())));
         window.location.hash = h;
     },
 
@@ -488,16 +485,14 @@ var PageController = Backbone.Model.extend({
         }
 
         var params = this.deparam(hash);
-        this.updateS2CoverMode();
-
         if (params.s2 == 'true') {
             this.$s2coveringButton.attr('checked', 'checked');
         }
 
+        this.updateS2CoverMode();
         this.$maxCells.val(params.max_cells);
         this.$minLevel.val(params.min_level);
         this.$maxLevel.val(params.max_level);
         this.$levelMod.val(params.level_mod);
-        this.editor.setValue(JSON.stringify(JSON.parse(params.geojson), null, 2));
     },
 });

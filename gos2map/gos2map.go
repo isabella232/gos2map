@@ -1,25 +1,82 @@
 package gos2map
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"appengine"
+	"appengine/datastore"
 
 	"github.com/davidreynolds/gos2/s2"
 	"github.com/gorilla/mux"
 	"github.com/kpawlik/geojson"
 )
 
+const defaultFeatureCollection = `{
+  "type": "FeatureCollection",
+  "features": [],
+}`
+
+type GeoJSON struct {
+	Name string
+	JSON string `datastore:",noindex"`
+}
+
+var indexPage = template.Must(template.ParseFiles("templates/index.html"))
+
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
-	t, err := template.ParseFiles("templates/index.html")
-	if err != nil {
+	c := appengine.NewContext(r)
+	name := RandomName()
+	obj := GeoJSON{
+		Name: name,
+		JSON: defaultFeatureCollection,
+	}
+	key := datastore.NewKey(c, "GeoJSON", name, 0, nil)
+	if _, err := datastore.Put(c, key, &obj); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	t.Execute(w, nil)
+	http.Redirect(w, r, fmt.Sprintf("/%s", name), http.StatusFound)
+}
+
+func mapHandler(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	vars := mux.Vars(r)
+	key := datastore.NewKey(c, "GeoJSON", vars["name"], 0, nil)
+	var obj GeoJSON
+	if err := datastore.Get(c, key, &obj); err != nil {
+		http.Error(w, "404 Not Found", http.StatusNotFound)
+		return
+	}
+	log.Println(obj)
+	if err := indexPage.Execute(w, obj); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func updateEditor(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	vars := mux.Vars(r)
+	key := datastore.NewKey(c, "GeoJSON", vars["name"], 0, nil)
+	log.Println(key)
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(r.Body)
+	obj := GeoJSON{
+		Name: vars["name"],
+		JSON: buf.String(),
+	}
+	if _, err := datastore.Put(c, key, &obj); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 type LatLng struct {
@@ -297,6 +354,8 @@ func difference(w http.ResponseWriter, r *http.Request) {
 func init() {
 	r := mux.NewRouter()
 	r.HandleFunc("/", IndexHandler)
+	r.HandleFunc("/{name:[a-zA-Z]+}", mapHandler).Methods("GET")
+	r.HandleFunc("/{name:[a-zA-Z]+}", updateEditor).Methods("POST")
 	r.HandleFunc("/a/s2cover", S2CoverHandler)
 	r.HandleFunc("/a/union", union)
 	r.HandleFunc("/a/intersection", intersection)
