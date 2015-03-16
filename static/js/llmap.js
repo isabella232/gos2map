@@ -109,7 +109,6 @@ var PageController = Backbone.Model.extend({
             }
             bounds = bounds.extend(p.getBounds());
         });
-        this.processBounds(bounds);
     },
 
     processBounds: function(bounds) {
@@ -186,7 +185,7 @@ var PageController = Backbone.Model.extend({
         this.renderCovering(newFeature);
     },
 
-    boundsCallback: function() {
+    boundsCallback: function(rebound) {
         this.setHash();
         this.resetDisplay();
         var geojsonFeature = null;
@@ -199,14 +198,21 @@ var PageController = Backbone.Model.extend({
             console.log('could not parse')
             return;
         }
+        console.log(geojsonFeature);
         var collection = L.geoJson(geojsonFeature, {
             style: function(f) {
                 return {weight: 2, color: color0};
             }
         });
+        console.log("foo");
         collection.eachLayer(_.bind(this.addDrawnLayer, this));
         if (this.drawnItems.getLayers().length >= 2) {
             this.showSetOperators();
+        } else {
+            this.hideSetOperators();
+        }
+        if (rebound !== false) {
+            this.processBounds(this.previousBounds);
         }
     },
 
@@ -215,8 +221,8 @@ var PageController = Backbone.Model.extend({
             this.previousBounds = l.getBounds();
         }
         this.previousBounds = this.previousBounds.extend(l.getBounds());
+        console.log(this.previousBounds);
         this.drawnItems.addLayer(l);
-        this.processBounds(this.previousBounds);
         if (this.showS2Covering()) {
             this.renderFeatureCovering(l.toGeoJSON());
         }
@@ -236,6 +242,7 @@ var PageController = Backbone.Model.extend({
             this.map.addControl(this.union);
             this.map.addControl(this.intersection);
             this.map.addControl(this.difference);
+            this.map.addControl(this.symmetric_difference);
         }
     },
 
@@ -245,6 +252,7 @@ var PageController = Backbone.Model.extend({
             this.map.removeControl(this.union);
             this.map.removeControl(this.intersection);
             this.map.removeControl(this.difference);
+            this.map.removeControl(this.symmetric_difference);
         } catch (err) {}
     },
 
@@ -253,7 +261,7 @@ var PageController = Backbone.Model.extend({
         this.drawnItems.clearLayers();
         this.hideSetOperators();
         this.editor.setValue(JSON.stringify(data, null, 2));
-        this.boundsCallback();
+        this.boundsCallback(false);
         this.setHash();
     },
 
@@ -282,7 +290,7 @@ var PageController = Backbone.Model.extend({
             text: '&#x22C3;',
             title: 'Set Union',
             click: _.bind(function() {
-                $.post("/a/union", JSON.stringify({"geoms":this.drawnItems.toGeoJSON()}),
+                $.post("/a/union", JSON.stringify(this.drawnItems.toGeoJSON()),
                        _.bind(this.operationCallback, this));
             }, this)
         });
@@ -291,7 +299,7 @@ var PageController = Backbone.Model.extend({
             text: '&#x22C2;',
             title: 'Set Intersection',
             click: _.bind(function() {
-                $.post("/a/intersection", JSON.stringify({"geoms":this.drawnItems.toGeoJSON()}),
+                $.post("/a/intersection", JSON.stringify(this.drawnItems.toGeoJSON()),
                        _.bind(this.operationCallback, this));
             }, this)
         });
@@ -300,7 +308,16 @@ var PageController = Backbone.Model.extend({
             text: '&#x2212;',
             title: 'Set Difference',
             click: _.bind(function() {
-                $.post("/a/difference", JSON.stringify({"geoms":this.drawnItems.toGeoJSON()}),
+                $.post("/a/difference", JSON.stringify(this.drawnItems.toGeoJSON()),
+                       _.bind(this.operationCallback, this));
+            }, this)
+        });
+
+        this.symmetric_difference = L.control.command({
+            text: '&#x2295',
+            title: 'Symmetric Difference',
+            click: _.bind(function() {
+                $.post("/a/symmetric_difference", JSON.stringify(this.drawnItems.toGeoJSON()),
                        _.bind(this.operationCallback, this));
             }, this)
         });
@@ -434,6 +451,7 @@ var PageController = Backbone.Model.extend({
                 });
             }
             this.addDrawnLayer(layer);
+            this.processBounds(this.previousBounds);
             this.editor.setValue(JSON.stringify(this.drawnItems.toGeoJSON(), null, 2));
             this.setHash();
             if (this.drawnItems.getLayers().length >= 2) {
