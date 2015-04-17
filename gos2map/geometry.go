@@ -1,143 +1,156 @@
 package gos2map
 
 import (
+	"github.com/davidreynolds/geojson"
 	"github.com/davidreynolds/gos2/s2"
-	"github.com/kpawlik/geojson"
 )
 
-type FeatureCollection geojson.FeatureCollection
-
-func (fc *FeatureCollection) Union() ([]*geojson.Feature, error) {
-	a, err := polygonFromFeature(fc.Features[0])
-	if err != nil {
-		return nil, err
-	}
-	for i := 1; i < len(fc.Features); i++ {
-		var c s2.Polygon
-		b, err := polygonFromFeature(fc.Features[i])
-		if err != nil {
-			return nil, err
+func geometryToS2Polygon(geom geojson.GeoJSON) (*s2.Polygon, error) {
+	var poly *s2.Polygon
+	builder := s2.NewPolygonBuilder(s2.DIRECTED_XOR())
+	switch geom := geom.(type) {
+	case geojson.Polygon:
+		for _, ring := range geom.Coordinates {
+			var points []s2.Point
+			for _, v := range ring {
+				points = append(points, s2.PointFromLatLng(s2.LatLngFromDegrees(v[1], v[0])))
+			}
+			builder.AddLoop(s2.NewLoopFromPath(points))
 		}
-		c.InitToUnion(a, b)
-		a = &c
+		poly = new(s2.Polygon)
+		builder.AssemblePolygon(poly, nil)
 	}
-	feat := polygonToFeature(a)
-	return []*geojson.Feature{feat}, nil
+	return poly, nil
 }
 
-func (fc *FeatureCollection) Intersection() ([]*geojson.Feature, error) {
-	var out []*s2.Polygon
-	for i := 0; i < len(fc.Features); i++ {
-		a, err := polygonFromFeature(fc.Features[i])
-		if err != nil {
-			return nil, err
+func s2PolygonToGeometry(poly s2.Polygon) *geojson.Polygon {
+	// Don't want nil rings for coordinates.
+	rings := [][]geojson.Coordinate{}
+	for i := 0; i < poly.NumLoops(); i++ {
+		loop := poly.Loop(i)
+		var ring []geojson.Coordinate
+		for j := 0; j <= loop.NumVertices(); j++ {
+			ll := s2.LatLngFromPoint(*loop.Vertex(j))
+			ring = append(ring, geojson.Coordinate{ll.Lng.Degrees(), ll.Lat.Degrees()})
 		}
-		for j := i + 1; j < len(fc.Features); j++ {
-			var c s2.Polygon
-			b, err := polygonFromFeature(fc.Features[j])
+		rings = append(rings, ring)
+	}
+	return &geojson.Polygon{Typ: "Polygon", Coordinates: rings}
+}
+
+func geometryToPolygonList(js geojson.GeoJSON) ([]*s2.Polygon, error) {
+	var polygons []*s2.Polygon
+	switch js := js.(type) {
+	case geojson.FeatureCollection:
+		for _, feature := range js.Features {
+			geom := feature.Geometry
+			poly, err := geometryToS2Polygon(geom)
 			if err != nil {
 				return nil, err
 			}
-			c.InitToIntersection(a, b)
-			out = append(out, &c)
+			if poly != nil {
+				polygons = append(polygons, poly)
+			}
 		}
 	}
-	a := out[0]
-	for i := 1; i < len(out); i++ {
-		b := out[i]
+	return polygons, nil
+}
+
+func featureCollectionFromS2Polygon(poly *s2.Polygon) *geojson.FeatureCollection {
+	feat := geojson.Feature{
+		Typ:      "Feature",
+		Geometry: s2PolygonToGeometry(*poly),
+	}
+	fc := &geojson.FeatureCollection{
+		Typ:      "FeatureCollection",
+		Features: []geojson.Feature{feat},
+	}
+	return fc
+}
+
+func Union(js geojson.GeoJSON) (*geojson.FeatureCollection, error) {
+	polygons, err := geometryToPolygonList(js)
+	if err != nil {
+		return nil, err
+	}
+	a := polygons[0]
+	for i := 1; i < len(polygons); i++ {
+		var c s2.Polygon
+		b := polygons[i]
+		c.InitToUnion(a, b)
+		a = &c
+	}
+	return featureCollectionFromS2Polygon(a), nil
+}
+
+func Intersection(js geojson.GeoJSON) (*geojson.FeatureCollection, error) {
+	polygons, err := geometryToPolygonList(js)
+	if err != nil {
+		return nil, err
+	}
+	var intersections []*s2.Polygon
+	for i := 0; i < len(polygons); i++ {
+		a := polygons[i]
+		for j := i + 1; j < len(polygons); j++ {
+			var c s2.Polygon
+			b := polygons[j]
+			c.InitToIntersection(a, b)
+			intersections = append(intersections, &c)
+		}
+	}
+	a := intersections[0]
+	for i := 1; i < len(intersections); i++ {
+		b := intersections[i]
 		var c s2.Polygon
 		c.InitToUnion(a, b)
 		a = &c
 	}
-	feat := polygonToFeature(a)
-	return []*geojson.Feature{feat}, nil
+	return featureCollectionFromS2Polygon(a), nil
 }
 
-func (fc *FeatureCollection) Difference() ([]*geojson.Feature, error) {
-	a, err := polygonFromFeature(fc.Features[0])
+func Difference(js geojson.GeoJSON) (*geojson.FeatureCollection, error) {
+	polygons, err := geometryToPolygonList(js)
 	if err != nil {
 		return nil, err
 	}
-	for i := 1; i < len(fc.Features); i++ {
+	a := polygons[0]
+	for i := 1; i < len(polygons); i++ {
 		var c s2.Polygon
-		b, err := polygonFromFeature(fc.Features[i])
-		if err != nil {
-			return nil, err
-		}
+		b := polygons[i]
 		c.InitToDifference(a, b)
 		a = &c
 	}
-	feat := polygonToFeature(a)
-	return []*geojson.Feature{feat}, nil
+	return featureCollectionFromS2Polygon(a), nil
 }
 
-func (fc *FeatureCollection) SymmetricDifference() ([]*geojson.Feature, error) {
-	var out []*geojson.Feature
-	for i := 0; i < len(fc.Features); i++ {
-		a, err := polygonFromFeature(fc.Features[i])
-		if err != nil {
-			return nil, err
-		}
-		for j := 0; j < len(fc.Features); j++ {
+func SymmetricDifference(js geojson.GeoJSON) (*geojson.FeatureCollection, error) {
+	polygons, err := geometryToPolygonList(js)
+	if err != nil {
+		return nil, err
+	}
+	var features []geojson.Feature
+	for i := 0; i < len(polygons); i++ {
+		a := polygons[i]
+		for j := 0; j < len(polygons); j++ {
 			if i == j {
 				continue
 			}
 			var c s2.Polygon
-			b, err := polygonFromFeature(fc.Features[j])
-			if err != nil {
-				return nil, err
-			}
+			b := polygons[j]
 			c.InitToDifference(a, b)
 			a = &c
 		}
 		if a.NumLoops() > 0 {
-			feat := polygonToFeature(a)
-			out = append(out, feat)
+			feat := geojson.Feature{
+				Typ:      "Feature",
+				Geometry: s2PolygonToGeometry(*a),
+			}
+			features = append(features, feat)
 		}
 	}
-	return out, nil
-}
-
-func polygonFromFeature(feat *geojson.Feature) (*s2.Polygon, error) {
-	builder := s2.NewPolygonBuilder(s2.DIRECTED_XOR())
-	geom, err := feat.GetGeometry()
-	if err != nil {
-		return nil, err
+	fc := &geojson.FeatureCollection{
+		Typ:      "FeatureCollection",
+		Features: features,
 	}
-	poly := geom.(*geojson.Polygon)
-	for i := 0; i < len(poly.Coordinates); i++ {
-		var v []float64
-		var points []s2.Point
-		for _, coord := range poly.Coordinates[i] {
-			v = append(v, float64(coord[0]))
-			v = append(v, float64(coord[1]))
-		}
-		for j := 0; j < len(v); j += 2 {
-			ll := s2.LatLngFromDegrees(v[j+1], v[j])
-			points = append(points, s2.PointFromLatLng(ll))
-		}
-		for j := 0; j < len(points); j++ {
-			builder.AddEdge(points[j], points[(j+1)%len(points)])
-		}
-	}
-	var out s2.Polygon
-	builder.AssemblePolygon(&out, nil)
-	return &out, nil
-}
-
-func polygonToFeature(poly *s2.Polygon) *geojson.Feature {
-	var coordinates []geojson.Coordinates
-	for i := 0; i < poly.NumLoops(); i++ {
-		loop := poly.Loop(i)
-		var coords geojson.Coordinates
-		for j := 0; j <= loop.NumVertices(); j++ {
-			ll := s2.LatLngFromPoint(*loop.Vertex(j))
-			lat := geojson.CoordType(ll.Lat.Degrees())
-			lng := geojson.CoordType(ll.Lng.Degrees())
-			coords = append(coords, geojson.Coordinate{lng, lat})
-		}
-		coordinates = append(coordinates, coords)
-	}
-	featPoly := geojson.NewPolygon(geojson.MultiLine(coordinates))
-	return geojson.NewFeature(featPoly, nil, nil)
+	return fc, nil
 }

@@ -118,19 +118,9 @@ var PageController = Backbone.Model.extend({
         }
     },
 
-    renderCovering: function(latlngs) {
+    renderCovering: function(geojson) {
         if (this.showS2Covering()) {
             var data = {};
-            if (latlngs['type'] && latlngs['geometry']) {
-                data = {"geojson": JSON.stringify(latlngs)};
-            } else {
-                data = {
-                    'points': _(latlngs).map(function(ll) {
-                        return ll.lat + "," + ll.lng;
-                    }).join(',')
-                };
-            }
-
             if (this.$minLevel.val()) {
                 data['min_level'] = this.$minLevel.val();
             }
@@ -143,6 +133,7 @@ var PageController = Backbone.Model.extend({
             if (this.$levelMod.val()) {
                 data['level_mod'] = this.$levelMod.val();
             }
+            data["geojson"] = JSON.stringify(geojson);
 
             $.ajax({
                 url: '/a/s2cover',
@@ -152,37 +143,6 @@ var PageController = Backbone.Model.extend({
                 success: _.bind(this.renderS2Cells, this)
             });
         }
-    },
-
-    renderFeatureCovering: function(geojsonFeature) {
-        var points = [];
-        var newFeature = {
-            'type': 'Feature',
-            'properties': {},
-            'geometry': {'type': 'Polygon', 'coordinates': []},
-        }
-        console.log('trying to load')
-        coords = geojsonFeature['geometry']['coordinates'];
-        flatcoords = _.flatten(coords);
-        for (var i = 0; i < flatcoords.length; i+=2) {
-            points.push(new L.LatLng(flatcoords[i+1], flatcoords[i]));
-        }
-        for (var i = 0; i < coords.length; i++) {
-            var pts = [];
-            var geomCoords = [];
-            for (var j = 0; j < coords[i].length; j++) {
-                var ll = new L.LatLng(coords[i][j][1], coords[i][j][0]);
-                pts.push(ll);
-            }
-            var geodesic = L.geodesic([pts], {steps:10});
-            var geodesicPoints = geodesic.getLatLngs();
-            var newCoords = [];
-            for (var j = 0; j < geodesicPoints[0].length; j++) {
-                geomCoords.push([geodesicPoints[0][j].lng, geodesicPoints[0][j].lat]);
-            }
-            newFeature['geometry']['coordinates'].push(geomCoords);
-        }
-        this.renderCovering(newFeature);
     },
 
     boundsCallback: function(rebound) {
@@ -198,13 +158,14 @@ var PageController = Backbone.Model.extend({
             console.log('could not parse')
             return;
         }
-        console.log(geojsonFeature);
+        if (this.showS2Covering()) {
+            this.renderCovering(geojsonFeature);
+        }
         var collection = L.geoJson(geojsonFeature, {
             style: function(f) {
                 return {weight: 2, color: color0};
             }
         });
-        console.log("foo");
         collection.eachLayer(_.bind(this.addDrawnLayer, this));
         if (this.drawnItems.getLayers().length >= 2) {
             this.showSetOperators();
@@ -223,9 +184,6 @@ var PageController = Backbone.Model.extend({
         this.previousBounds = this.previousBounds.extend(l.getBounds());
         console.log(this.previousBounds);
         this.drawnItems.addLayer(l);
-        if (this.showS2Covering()) {
-            this.renderFeatureCovering(l.toGeoJSON());
-        }
     },
 
     updateS2CoverMode: function() {

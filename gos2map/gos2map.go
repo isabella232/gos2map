@@ -5,18 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 
 	"strconv"
-	"strings"
 
 	"appengine"
 	"appengine/datastore"
 
+	"github.com/davidreynolds/geojson"
 	"github.com/davidreynolds/gos2/s2"
 	"github.com/gorilla/mux"
-	"github.com/kpawlik/geojson"
 )
 
 const defaultFeatureCollection = `{
@@ -123,11 +121,6 @@ func cellIdsToJSON(w http.ResponseWriter, ids []s2.CellID) {
 func coverHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Encoding", "gzip")
-	var points []string
-	pointstr := r.FormValue("points")
-	if len(pointstr) > 0 {
-		points = strings.Split(r.FormValue("points"), ",")
-	}
 	minLevel, err := strconv.Atoi(r.FormValue("min_level"))
 	if err != nil {
 		minLevel = 1
@@ -144,54 +137,35 @@ func coverHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		levelMod = 1
 	}
-	builder := s2.NewPolygonBuilder(s2.DIRECTED_XOR())
-	pvec := []s2.Point{}
-	for i := 0; i < len(points); i += 2 {
-		lat, _ := strconv.ParseFloat(points[i], 64)
-		lng, _ := strconv.ParseFloat(points[i+1], 64)
-		pvec = append(pvec, s2.PointFromLatLng(s2.LatLngFromDegrees(lat, lng)))
-	}
 
-	var covering []s2.CellID
+	var geojs geojson.GeoJSON
+	err = geojson.Unmarshal([]byte(r.FormValue("geojson")), &geojs)
+	if hasError(w, err) {
+		return
+	}
 	coverer := s2.NewRegionCoverer()
 	coverer.SetMinLevel(minLevel)
 	coverer.SetMaxLevel(maxLevel)
 	coverer.SetLevelMod(levelMod)
 	coverer.SetMaxCells(maxCells)
-
-	var feature geojson.Feature
-	err = json.Unmarshal([]byte(r.FormValue("geojson")), &feature)
-	if hasError(w, err) {
-		return
-	}
-
-	geom, err := feature.GetGeometry()
-	if hasError(w, err) {
-		return
-	}
-	switch gg := geom.(type) {
-	case *geojson.Polygon:
-		for i := 0; i < len(gg.Coordinates); i++ {
-			coords := gg.Coordinates[i]
-			pb := s2.NewPolygonBuilder(s2.DIRECTED_XOR())
-			vec := make([]s2.Point, 0, len(coords)/2)
-			for j := 0; j < len(coords); j += 2 {
-				lat := float64(coords[j][1])
-				lng := float64(coords[j][0])
-				vec = append(vec, s2.PointFromLatLng(s2.LatLngFromDegrees(lat, lng)))
+	coverMap := make(map[s2.CellID]struct{})
+	switch geojs := geojs.(type) {
+	case geojson.FeatureCollection:
+		for _, feature := range geojs.Features {
+			geom := feature.Geometry
+			poly, err := geometryToS2Polygon(geom)
+			if hasError(w, err) {
+				return
 			}
-			for j := 0; j < len(vec); j++ {
-				pb.AddEdge(vec[j], vec[(j+1)%len(vec)])
+			cover := coverer.Covering(poly)
+			for _, c := range cover {
+				coverMap[c] = struct{}{}
 			}
-			var poly s2.Polygon
-			pb.AssemblePolygon(&poly, nil)
-			builder.AddPolygon(&poly)
 		}
-		var poly s2.Polygon
-		builder.AssemblePolygon(&poly, nil)
-		covering = coverer.Covering(&poly)
-	default:
-		log.Printf("Invalid geom type: %v", gg)
+	}
+	covering := make([]s2.CellID, 0, len(coverMap))
+	for k, _ := range coverMap {
+		covering = append(covering, k)
 	}
 	cellIdsToJSON(w, covering)
 }
@@ -207,16 +181,17 @@ func hasError(w http.ResponseWriter, err error) bool {
 func union(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	decoder := json.NewDecoder(r.Body)
-	var fc FeatureCollection
-	err := decoder.Decode(&fc)
+	var m map[string]interface{}
+	err := decoder.Decode(&m)
 	if hasError(w, err) {
 		return
 	}
-	features, err := fc.Union()
+	var js geojson.GeoJSON
+	geojson.FromMap(m, &js)
+	collection, err := Union(js)
 	if hasError(w, err) {
 		return
 	}
-	collection := geojson.NewFeatureCollection(features)
 	enc := json.NewEncoder(w)
 	if err := enc.Encode(collection); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -226,16 +201,17 @@ func union(w http.ResponseWriter, r *http.Request) {
 func intersection(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	decoder := json.NewDecoder(r.Body)
-	var fc FeatureCollection
-	err := decoder.Decode(&fc)
+	var m map[string]interface{}
+	err := decoder.Decode(&m)
 	if hasError(w, err) {
 		return
 	}
-	features, err := fc.Intersection()
+	var js geojson.GeoJSON
+	geojson.FromMap(m, &js)
+	collection, err := Intersection(js)
 	if hasError(w, err) {
 		return
 	}
-	collection := geojson.NewFeatureCollection(features)
 	enc := json.NewEncoder(w)
 	if err := enc.Encode(collection); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -245,16 +221,17 @@ func intersection(w http.ResponseWriter, r *http.Request) {
 func difference(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	decoder := json.NewDecoder(r.Body)
-	var fc FeatureCollection
-	err := decoder.Decode(&fc)
+	var m map[string]interface{}
+	err := decoder.Decode(&m)
 	if hasError(w, err) {
 		return
 	}
-	features, err := fc.Difference()
+	var js geojson.GeoJSON
+	geojson.FromMap(m, &js)
+	collection, err := Difference(js)
 	if hasError(w, err) {
 		return
 	}
-	collection := geojson.NewFeatureCollection(features)
 	enc := json.NewEncoder(w)
 	if err := enc.Encode(collection); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -264,16 +241,17 @@ func difference(w http.ResponseWriter, r *http.Request) {
 func symmetricDifference(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	decoder := json.NewDecoder(r.Body)
-	var fc FeatureCollection
-	err := decoder.Decode(&fc)
+	var m map[string]interface{}
+	err := decoder.Decode(&m)
 	if hasError(w, err) {
 		return
 	}
-	features, err := fc.SymmetricDifference()
+	var js geojson.GeoJSON
+	geojson.FromMap(m, &js)
+	collection, err := SymmetricDifference(js)
 	if hasError(w, err) {
 		return
 	}
-	collection := geojson.NewFeatureCollection(features)
 	enc := json.NewEncoder(w)
 	if err := enc.Encode(collection); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
